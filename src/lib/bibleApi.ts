@@ -6,7 +6,7 @@ export type { BibleVerse };
 
 // Get environment variables with fallbacks
 const API_KEY = import.meta.env.VITE_BIBLE_API_KEY || '541f6e15fa999cbd8f8c593ca4186332';
-const BIBLE_ID = import.meta.env.VITE_BIBLE_ID || '9879dbb7cfe39e4d-01';
+const BIBLE_ID = import.meta.env.VITE_BIBLE_ID || 'de4e12af7f28f599-02'; // KJV Bible ID
 const BASE_URL = 'https://api.scripture.api.bible/v1';
 
 // Log the configuration for debugging

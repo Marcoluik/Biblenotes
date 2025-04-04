@@ -14,7 +14,7 @@ const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 const BIBLE_API_BASE_URL = 'https://api.scripture.api.bible/v1';
-const DEFAULT_BIBLE_ID = '9879dbb7cfe39e4d-01'; // English Standard Version (ESV)
+const DEFAULT_BIBLE_ID = 'de4e12af7f28f599-02'; // King James Version (KJV)
 
 if (!process.env.VITE_BIBLE_API_KEY) {
   console.error('ERROR: VITE_BIBLE_API_KEY is not set in environment variables');

@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './lib/supabase';
 import { Note as NoteComponent } from './components/Note';
+import { getAvailableBibles } from './lib/bibleApi';
 import { Auth } from './components/Auth';
 import { ErrorMessage } from './components/ErrorMessage';
 import { Note } from './types';
 import { DailyVerse } from './components/DailyVerse';
-import { getAvailableBibles } from './lib/bibleApi';
 import { InlineBibleVerseSelector } from './components/InlineBibleVerseSelector';
 
 function App() {
@@ -31,7 +31,6 @@ function App() {
   const [selectedBibleId, setSelectedBibleId] = useState<string>('');
   const [bibleSearchTerm, setBibleSearchTerm] = useState<string>('');
   const [filteredBibles, setFilteredBibles] = useState<{ id: string; name: string; language: { id: string; name: string } }[]>([]);
-  const [isBibleDropdownOpen, setIsBibleDropdownOpen] = useState(false);
   const bibleDropdownRef = useRef<HTMLDivElement>(null);
   const [showBibleModal, setShowBibleModal] = useState(false);
 
@@ -79,34 +78,34 @@ function App() {
         if (bibles.length === 0) {
           console.log('No Bibles found, using default Bible ID');
           // Set a default Bible ID if no Bibles are found
-          setSelectedBibleId('9879dbb7cfe39e4d-01'); // ESV Bible ID
+          setSelectedBibleId('de4e12af7f28f599-02'); // KJV Bible ID
           return;
         }
         
         setAvailableBibles(bibles);
         setFilteredBibles(bibles);
         
-        // Find ESV Bible and set it as default
-        const esvBible = bibles.find(bible => 
-          bible.name.toLowerCase().includes('english standard version') || 
-          bible.name.toLowerCase().includes('esv') ||
-          bible.id === '9879dbb7cfe39e4d-01'
+        // Find KJV Bible and set it as default
+        const kjvBible = bibles.find(bible => 
+          bible.name.toLowerCase().includes('king james version') || 
+          bible.name.toLowerCase().includes('kjv') ||
+          bible.id === 'de4e12af7f28f599-02'
         );
         
-        if (esvBible) {
-          console.log('Found ESV Bible:', esvBible); // Debug log
-          setSelectedBibleId(esvBible.id);
+        if (kjvBible) {
+          console.log('Found KJV Bible:', kjvBible); // Debug log
+          setSelectedBibleId(kjvBible.id);
         } else {
-          // Fall back to King James Version
-          const kjvBible = bibles.find(bible => 
-            bible.name.toLowerCase().includes('king james version') || 
-            bible.name.toLowerCase().includes('kjv') ||
-            bible.id === 'de4e12af7f28f599-02'
+          // Fall back to English Standard Version
+          const esvBible = bibles.find(bible => 
+            bible.name.toLowerCase().includes('english standard version') || 
+            bible.name.toLowerCase().includes('esv') ||
+            bible.id === '9879dbb7cfe39e4d-01'
           );
           
-          if (kjvBible) {
-            console.log('Found KJV Bible:', kjvBible); // Debug log
-            setSelectedBibleId(kjvBible.id);
+          if (esvBible) {
+            console.log('Found ESV Bible:', esvBible); // Debug log
+            setSelectedBibleId(esvBible.id);
           } else if (bibles.length > 0) {
             console.log('Setting first Bible as default:', bibles[0]); // Debug log
             setSelectedBibleId(bibles[0].id);
@@ -115,7 +114,7 @@ function App() {
       } catch (error) {
         console.error('Error fetching Bibles:', error);
         // Set a default Bible ID if there's an error
-        setSelectedBibleId('9879dbb7cfe39e4d-01'); // ESV Bible ID
+        setSelectedBibleId('de4e12af7f28f599-02'); // KJV Bible ID
       }
     };
     
@@ -206,22 +205,19 @@ function App() {
 
   const handleSaveNote = async (id: string, title: string, content: string) => {
     try {
-      const updatedNotes = notes.map(note => {
-        if (note.id === id) {
-          return { 
-            ...note, 
-            title, 
-            content, 
-            updated_at: new Date().toISOString() 
-          };
-        }
-        return note;
-      });
-      setNotes(updatedNotes);
-      localStorage.setItem('notes', JSON.stringify(updatedNotes));
-    } catch (error) {
+      const { error } = await supabase
+        .from('notes')
+        .update({ title, content })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setNotes(notes.map(note => 
+        note.id === id ? { ...note, title, content } : note
+      ));
+    } catch (error: any) {
       console.error('Error saving note:', error);
-      throw error;
+      setError(error.message);
     }
   };
 
@@ -254,6 +250,53 @@ function App() {
 
   const handleCreateNote = () => {
     setShowAddNoteForm(true);
+    // Reset form fields
+    setNewNoteTitle('');
+    setNewNoteContent('');
+    setNewNoteCategory(undefined);
+    setIsNewCategory(false);
+    // Focus on the title input after a short delay
+    setTimeout(() => {
+      const titleInput = document.querySelector('input[placeholder="Note title"]') as HTMLInputElement;
+      if (titleInput) {
+        titleInput.focus();
+      }
+    }, 100);
+  };
+
+  const handleAddNote = async () => {
+    if (!newNoteTitle.trim()) {
+      setError('Please enter a title for your note');
+      return;
+    }
+
+    try {
+      const noteId = crypto.randomUUID();
+      const { data, error } = await supabase
+        .from('notes')
+        .insert([
+          {
+            id: noteId,
+            title: newNoteTitle.trim(),
+            content: newNoteContent.trim(),
+            user_id: user.id,
+            category: newNoteCategory
+          }
+        ])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setNotes([...notes, data]);
+      setNewNoteTitle('');
+      setNewNoteContent('');
+      setNewNoteCategory(undefined);
+      setShowAddNoteForm(false);
+    } catch (error: any) {
+      console.error('Error creating note:', error);
+      setError(error.message);
+    }
   };
 
   const handleSignOut = async () => {
@@ -262,64 +305,6 @@ function App() {
     } catch (error: any) {
       console.error('Error signing out:', error);
       setError(error.message);
-    }
-  };
-
-  const handleAddNote = async () => {
-    if (!newNoteTitle.trim()) {
-      alert('Please enter a title for your note');
-      return;
-    }
-
-    try {
-      const noteId = crypto.randomUUID();
-      const newNote: Note = {
-        id: noteId,
-        user_id: user?.id || '',
-        title: newNoteTitle.trim(),
-        content: newNoteContent.trim(),
-        category: newNoteCategory?.trim() || 'uncategorized',
-        bible_reference: '',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-
-      // Add to local state
-      setNotes(prevNotes => [...prevNotes, newNote]);
-      localStorage.setItem('notes', JSON.stringify([...notes, newNote]));
-
-      // Save to Supabase if user is authenticated
-      if (user) {
-        const { error } = await supabase
-          .from('notes')
-          .insert([{
-            id: noteId,
-            user_id: user.id,
-            title: newNote.title,
-            content: newNote.content,
-            category: newNote.category,
-            bible_reference: '',
-            created_at: newNote.created_at,
-            updated_at: newNote.updated_at
-          }]);
-
-        if (error) throw error;
-      }
-
-      // Update categories if needed
-      if (newNote.category && !categories.includes(newNote.category)) {
-        setCategories(prev => [...prev, newNote.category as string]);
-        localStorage.setItem('categories', JSON.stringify([...categories, newNote.category]));
-      }
-
-      // Reset form
-      setNewNoteTitle('');
-      setNewNoteContent('');
-      setNewNoteCategory(undefined);
-      setShowAddNoteForm(false);
-    } catch (error) {
-      console.error('Error creating note:', error);
-      alert('Failed to create note. Please try again.');
     }
   };
 
@@ -422,7 +407,7 @@ function App() {
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (bibleDropdownRef.current && !bibleDropdownRef.current.contains(event.target as Node)) {
-        setIsBibleDropdownOpen(false);
+        // No need to close anything here anymore
       }
     };
 
@@ -431,39 +416,6 @@ function App() {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
-
-  // Handle keyboard navigation for Bible dropdown
-  const handleBibleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!isBibleDropdownOpen) {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        setIsBibleDropdownOpen(true);
-      }
-      return;
-    }
-
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      setIsBibleDropdownOpen(false);
-      return;
-    }
-
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault();
-      const currentIndex = filteredBibles.findIndex(bible => bible.id === selectedBibleId);
-      let newIndex;
-      
-      if (e.key === 'ArrowDown') {
-        newIndex = currentIndex < filteredBibles.length - 1 ? currentIndex + 1 : 0;
-      } else {
-        newIndex = currentIndex > 0 ? currentIndex - 1 : filteredBibles.length - 1;
-      }
-      
-      if (newIndex >= 0 && newIndex < filteredBibles.length) {
-        setSelectedBibleId(filteredBibles[newIndex].id);
-      }
-    }
-  };
 
   if (isLoading) {
     return (
@@ -492,7 +444,9 @@ function App() {
       {/* Mobile-friendly header */}
       <div className="mobile-header bg-white rounded-lg shadow-md p-4 mb-8">
         <div className="flex justify-between items-center">
-          <h1 className="mobile-header-title font-bold text-gray-800">Bible Notes</h1>
+          <h1 className="mobile-header-title font-bold text-gray-800 flex items-center">
+            <span className="mr-2">📖</span> Bible Notes
+          </h1>
           <div className="flex items-center space-x-2">
             <button
               onClick={() => setShowBibleModal(true)}
@@ -503,7 +457,7 @@ function App() {
             </button>
             <button
               onClick={handleCreateNote}
-              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm"
+              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm transition-all duration-200 ease-in-out transform hover:scale-105"
             >
               Create Note
             </button>
@@ -513,7 +467,7 @@ function App() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
               </button>
-              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-2 hidden group-hover:block">
+              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 ease-in-out">
                 <div className="px-4 py-2 text-sm text-gray-600 border-b">
                   {user.email}
                 </div>
@@ -678,10 +632,10 @@ function App() {
         )}
       </div>
 
-      {/* New Note Form */}
+      {/* New Note Modal */}
       {showAddNoteForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-bold">Create New Note</h2>
               <button
@@ -700,6 +654,43 @@ function App() {
                 className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
+            <div className="mb-2 flex space-x-2 p-2 bg-gray-100 rounded-lg">
+              <button
+                onClick={() => applyFormatting('bold')}
+                className="p-1 hover:bg-gray-200 rounded"
+                title="Bold"
+              >
+                <strong>B</strong>
+              </button>
+              <button
+                onClick={() => applyFormatting('italic')}
+                className="p-1 hover:bg-gray-200 rounded"
+                title="Italic"
+              >
+                <em>I</em>
+              </button>
+              <button
+                onClick={() => applyFormatting('underline')}
+                className="p-1 hover:bg-gray-200 rounded"
+                title="Underline"
+              >
+                <u>U</u>
+              </button>
+              <button
+                onClick={() => applyFormatting('quote')}
+                className="p-1 hover:bg-gray-200 rounded"
+                title="Quote"
+              >
+                "
+              </button>
+              <button
+                onClick={() => setShowInlineSelector(true)}
+                className="p-1 hover:bg-gray-200 rounded"
+                title="Insert Bible Verse"
+              >
+                📖
+              </button>
+            </div>
             <div className="mb-4">
               <textarea
                 ref={newNoteTextareaRef}
@@ -707,7 +698,7 @@ function App() {
                 onChange={(e) => setNewNoteContent(e.target.value)}
                 onKeyDown={handleNewNoteKeyDown}
                 placeholder="Write your note here..."
-                className="w-full h-32 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full h-64 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div className="mb-4">
@@ -742,14 +733,27 @@ function App() {
                 </select>
               )}
             </div>
-            <div className="flex justify-end">
+            <div className="flex justify-end space-x-2">
+              <button
+                onClick={() => setShowAddNoteForm(false)}
+                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100"
+              >
+                Cancel
+              </button>
               <button
                 onClick={handleAddNote}
                 className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
               >
-                Add Note
+                Create Note
               </button>
             </div>
+            {showInlineSelector && (
+              <InlineBibleVerseSelector
+                onInsertVerse={handleInsertVerse}
+                onClose={() => setShowInlineSelector(false)}
+                bibleId={selectedBibleId}
+              />
+            )}
           </div>
         </div>
       )}

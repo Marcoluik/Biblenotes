@@ -3,6 +3,7 @@ import { InlineBibleVerseSelector } from './InlineBibleVerseSelector';
 import { BibleVerseHover } from './BibleVerseHover';
 import { Note as NoteType } from '../types';
 import { supabase } from '../lib/supabase';
+import { NoteViewModal } from './NoteViewModal';
 
 interface NoteProps {
   note: NoteType;
@@ -16,7 +17,6 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(note.title);
   const [content, setContent] = useState(note.content);
-  const [showSuccess, setShowSuccess] = useState(false);
   const [showInlineSelector, setShowInlineSelector] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareEmail, setShareEmail] = useState('');
@@ -24,6 +24,7 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
   const [shareSuccess, setShareSuccess] = useState(false);
   const [sharedWithUsers, setSharedWithUsers] = useState<{ id: string; email: string }[]>([]);
   const [isLoadingSharedUsers, setIsLoadingSharedUsers] = useState(false);
+  const [showViewModal, setShowViewModal] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -35,18 +36,37 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
   const fetchSharedUsers = async () => {
     setIsLoadingSharedUsers(true);
     try {
-      const { data, error } = await supabase
+      // First get the shared notes
+      const { data: sharedNotes, error: sharedError } = await supabase
         .from('shared_notes')
-        .select('shared_with, profiles:shared_with(email)')
+        .select('shared_with')
         .eq('note_id', note.id);
 
-      if (error) throw error;
+      if (sharedError) throw sharedError;
 
-      const users = data.map(item => ({
-        id: item.shared_with,
-        email: (item.profiles as unknown as { email: string }).email
+      if (!sharedNotes || sharedNotes.length === 0) {
+        setSharedWithUsers([]);
+        return;
+      }
+
+      // Then get the user emails using the RPC function
+      const userIds = sharedNotes.map(note => note.shared_with);
+      const { data: users, error: usersError } = await supabase
+        .rpc('get_users_by_ids', { user_ids: userIds });
+
+      if (usersError) throw usersError;
+
+      interface UserWithEmail {
+        id: string;
+        email: string;
+      }
+
+      const usersWithEmails = (users as UserWithEmail[]).map(user => ({
+        id: user.id,
+        email: user.email
       }));
-      setSharedWithUsers(users);
+
+      setSharedWithUsers(usersWithEmails);
     } catch (error) {
       console.error('Error fetching shared users:', error);
     } finally {
@@ -77,8 +97,6 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
       });
       
       console.log('Note saved successfully');
-      setShowSuccess(true);
-      setTimeout(() => setShowSuccess(false), 3000);
       setIsEditing(false);
     } catch (error: any) {
       console.error('Error saving note:', error);
@@ -127,23 +145,23 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
     }
 
     try {
-      // First, find the user by email
+      // Use the admin API to find the user by email
       const { data: users, error: userError } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('email', shareEmail.trim())
-        .single();
+        .rpc('get_user_by_email', { email_address: shareEmail.trim() });
 
       if (userError) {
+        console.error('Error finding user:', userError);
         throw new Error('User not found. Make sure they have an account in the app.');
       }
 
-      if (!users) {
+      if (!users || users.length === 0) {
         throw new Error('User not found');
       }
 
+      const userId = users[0].id;
+
       // Check if already shared with this user
-      if (sharedWithUsers.some(user => user.id === users.id)) {
+      if (sharedWithUsers.some(user => user.id === userId)) {
         throw new Error('Note is already shared with this user');
       }
 
@@ -153,19 +171,21 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
         .insert({
           note_id: note.id,
           shared_by: note.user_id,
-          shared_with: users.id
+          shared_with: userId
         });
 
       if (shareError) {
+        console.error('Error sharing note:', shareError);
         throw shareError;
       }
 
       // Update the shared users list
-      setSharedWithUsers([...sharedWithUsers, { id: users.id, email: shareEmail.trim() }]);
+      setSharedWithUsers([...sharedWithUsers, { id: userId, email: shareEmail.trim() }]);
       setShareEmail('');
       setShareSuccess(true);
       setTimeout(() => setShareSuccess(false), 2000);
     } catch (error: any) {
+      console.error('Share error:', error);
       setShareError(error.message);
     }
   };
@@ -231,12 +251,34 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
         // Check if the line contains a Bible verse reference
         const verseMatch = line.match(/\[(.*?)\]/);
         if (verseMatch) {
-          const reference = verseMatch[1];
-          return (
-            <div key={index} className="mb-2">
-              <BibleVerseHover reference={reference} bibleId={bibleId} />
-            </div>
-          );
+          // If the line is just the verse reference, render it as a standalone component
+          if (line.trim() === `[${verseMatch[1]}]`) {
+            return (
+              <div key={index} className="mb-2">
+                <BibleVerseHover reference={verseMatch[1]} bibleId={bibleId} />
+              </div>
+            );
+          } else {
+            // If the verse reference is inline with other text, split the line and render each part
+            const parts = line.split(/(\[.*?\])/);
+            return (
+              <div key={index} className="mb-2">
+                {parts.map((part, partIndex) => {
+                  const innerVerseMatch = part.match(/\[(.*?)\]/);
+                  if (innerVerseMatch) {
+                    return (
+                      <BibleVerseHover 
+                        key={`${index}-${partIndex}`} 
+                        reference={innerVerseMatch[1]} 
+                        bibleId={bibleId} 
+                      />
+                    );
+                  }
+                  return <span key={`${index}-${partIndex}`}>{part}</span>;
+                })}
+              </div>
+            );
+          }
         }
         return <div key={index} className="mb-2">{line}</div>;
       });
@@ -253,8 +295,65 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
   };
 
   return (
-    <div className="bg-white p-4 rounded-lg shadow-md">
-      {isEditing ? (
+    <div className="bg-white rounded-lg shadow-md p-4 mb-4 hover:shadow-lg transition-shadow duration-200">
+      {!isEditing ? (
+        <>
+          <div className="flex justify-between items-start mb-2">
+            <h3 className="text-lg font-semibold text-gray-800">{note.title}</h3>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => setShowViewModal(true)}
+                className="text-blue-500 hover:text-blue-700 p-1"
+                title="View Note"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+              </button>
+              <button
+                onClick={() => setIsEditing(true)}
+                className="text-blue-500 hover:text-blue-700 p-1"
+                title="Edit Note"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </button>
+              {!isShared && (
+                <>
+                  <button
+                    onClick={() => setShowShareModal(true)}
+                    className="text-green-500 hover:text-green-700 p-1"
+                    title="Share Note"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => onDelete(note.id)}
+                    className="text-red-500 hover:text-red-700 p-1"
+                    title="Delete Note"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+          <div className="text-gray-700 whitespace-pre-wrap mb-2">
+            {renderContent()}
+          </div>
+          {note.category && (
+            <div className="text-sm text-gray-500">
+              Category: {note.category}
+            </div>
+          )}
+        </>
+      ) : (
         <div>
           <input
             type="text"
@@ -331,68 +430,6 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
             </div>
           )}
         </div>
-      ) : (
-        <div>
-          <div className="flex justify-between items-start mb-2">
-            <h3 className="text-lg font-semibold">{title}</h3>
-            <div className="flex space-x-1">
-              {!isShared && (
-                <button
-                  onClick={() => setShowShareModal(true)}
-                  className="p-1 text-gray-500 hover:text-blue-500"
-                  title="Share note"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                    <path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z" />
-                  </svg>
-                </button>
-              )}
-              {!isShared && (
-                <button
-                  onClick={() => setIsEditing(true)}
-                  className="p-1 text-gray-500 hover:text-blue-500"
-                  title="Edit note"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                    <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                  </svg>
-                </button>
-              )}
-              {!isShared && (
-                <button
-                  onClick={() => onDelete(note.id)}
-                  className="p-1 text-gray-500 hover:text-red-500"
-                  title="Delete note"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
-                  </svg>
-                </button>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-2 mb-2">
-            {note.category && (
-              <span className="text-sm text-gray-600 bg-gray-100 px-2 py-1 rounded">
-                {note.category}
-              </span>
-            )}
-            {sharedWithUsers.length > 0 && (
-              <span className="text-sm text-green-600 bg-green-50 px-2 py-1 rounded flex items-center gap-1">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                  <path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z" />
-                </svg>
-                Shared
-              </span>
-            )}
-          </div>
-          <div className="text-gray-700 whitespace-pre-wrap">{renderContent()}</div>
-          {isShared && (
-            <div className="mt-2 text-xs text-gray-500">
-              Shared with you
-            </div>
-          )}
-        </div>
       )}
 
       {/* Share Modal */}
@@ -460,6 +497,15 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
             </div>
           </div>
         </div>
+      )}
+
+      {/* View Modal */}
+      {showViewModal && (
+        <NoteViewModal
+          note={note}
+          onClose={() => setShowViewModal(false)}
+          bibleId={bibleId}
+        />
       )}
     </div>
   );
