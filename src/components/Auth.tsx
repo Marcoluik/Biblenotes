@@ -19,12 +19,25 @@ export const Auth: React.FC<AuthProps> = ({ onAuthSuccess }) => {
 
     try {
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({
+        const { error: signUpError } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: window.location.origin,
+            data: {
+              email_confirmed: true
+            }
+          }
+        });
+        if (signUpError) throw signUpError;
+        
+        // Automatically sign in after signup
+        const { error: signInError } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
-        if (error) throw error;
-        alert('Check your email for the confirmation link!');
+        if (signInError) throw signInError;
+        onAuthSuccess();
       } else {
         const { error } = await supabase.auth.signInWithPassword({
           email,
