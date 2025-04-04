@@ -79,6 +79,31 @@ CREATE POLICY "Users can delete their own notes"
   USING (auth.uid() = user_id);
 
 -- Create policy to allow users to manage their shared notes
-CREATE POLICY "Users can manage their shared notes" 
-  ON shared_notes FOR ALL 
-  USING (auth.uid() = shared_by); 
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE tablename = 'shared_notes' 
+        AND policyname = 'Users can manage their shared notes'
+    ) THEN
+        CREATE POLICY "Users can manage their shared notes" 
+          ON shared_notes FOR ALL 
+          USING (auth.uid() = shared_by);
+    END IF;
+END
+$$;
+
+-- Create policy to allow users to view notes shared with them
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE tablename = 'shared_notes' 
+        AND policyname = 'Users can view notes shared with them'
+    ) THEN
+        CREATE POLICY "Users can view notes shared with them" 
+          ON shared_notes FOR SELECT 
+          USING (auth.uid() = shared_with);
+    END IF;
+END
+$$; 

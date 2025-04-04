@@ -167,6 +167,8 @@ function App() {
 
   const fetchNotes = async (userId: string) => {
     try {
+      console.log('Fetching notes for user:', userId);
+      
       // Fetch user's own notes
       const { data: userNotes, error: userNotesError } = await supabase
         .from('notes')
@@ -175,25 +177,60 @@ function App() {
         .order('created_at', { ascending: false });
 
       if (userNotesError) throw userNotesError;
+      console.log('User notes fetched:', userNotes?.length || 0);
       setNotes(userNotes || []);
       
-      // Fetch notes shared with the user
-      const { data: sharedNotesData, error: sharedNotesError } = await supabase
-        .from('notes')
-        .select('*, shared_notes!inner(*)')
-        .eq('shared_notes.shared_with', userId)
-        .order('created_at', { ascending: false });
+      // First get the shared note IDs
+      console.log('Fetching shared note IDs for user:', userId);
+      const { data: sharedNoteIds, error: sharedIdsError } = await supabase
+        .from('shared_notes')
+        .select('note_id')
+        .eq('shared_with', userId);
 
-      if (sharedNotesError) throw sharedNotesError;
-      setSharedNotes(sharedNotesData || []);
+      if (sharedIdsError) {
+        console.error('Error fetching shared note IDs:', sharedIdsError);
+        throw sharedIdsError;
+      }
+      
+      console.log('Shared note IDs found:', sharedNoteIds?.length || 0);
+      console.log('Shared note IDs:', sharedNoteIds);
+
+      // Then fetch the actual notes
+      let sharedNotesList: Note[] = [];
+      if (sharedNoteIds && sharedNoteIds.length > 0) {
+        const noteIds = sharedNoteIds.map(item => item.note_id);
+        console.log('Fetching notes with IDs:', noteIds);
+        
+        const { data: sharedNotes, error: sharedNotesError } = await supabase
+          .from('notes')
+          .select('*')
+          .in('id', noteIds);
+
+        if (sharedNotesError) {
+          console.error('Error fetching shared notes:', sharedNotesError);
+          throw sharedNotesError;
+        }
+
+        console.log('Shared notes fetched:', sharedNotes?.length || 0);
+        console.log('Shared notes data:', sharedNotes);
+        sharedNotesList = sharedNotes || [];
+      } else {
+        console.log('No shared notes found for user');
+      }
+      
+      console.log('Setting shared notes state:', sharedNotesList.length);
+      setSharedNotes(sharedNotesList);
       
       // Extract unique categories from both user notes and shared notes
-      const allNotes = [...(userNotes || []), ...(sharedNotesData || [])];
+      const allNotes = [...(userNotes || []), ...sharedNotesList];
+      console.log('Total notes (user + shared):', allNotes.length);
+      
       const uniqueCategories = Array.from(new Set(
         allNotes
           .map((note: Note) => note.category)
           .filter((category): category is string => typeof category === 'string')
       ));
+      console.log('Unique categories:', uniqueCategories);
       setCategories(uniqueCategories);
     } catch (error: any) {
       console.error('Error fetching notes:', error);
@@ -417,6 +454,39 @@ function App() {
     };
   }, []);
 
+  // Add a function to refresh notes
+  const refreshNotes = async () => {
+    if (user) {
+      await fetchNotes(user.id);
+    }
+  };
+
+  // Set up a subscription to listen for changes to shared_notes
+  useEffect(() => {
+    if (!user) return;
+
+    const subscription = supabase
+      .channel('shared_notes_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'shared_notes',
+          filter: `shared_with=eq.${user.id}`
+        },
+        (payload) => {
+          console.log('Shared notes change detected:', payload);
+          refreshNotes();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [user]);
+
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-screen">
@@ -559,6 +629,17 @@ function App() {
                 </span>
               )}
             </button>
+            {activeTab === 'shared-notes' && (
+              <button
+                onClick={refreshNotes}
+                className="ml-2 p-1 text-gray-500 hover:text-gray-700"
+                title="Refresh shared notes"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </button>
+            )}
           </li>
         </ul>
       </div>

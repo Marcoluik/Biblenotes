@@ -14,6 +14,13 @@ interface NoteProps {
 }
 
 export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isShared = false }) => {
+  console.log('Note component rendered:', { 
+    noteId: note.id, 
+    title: note.title, 
+    isShared: isShared,
+    userId: note.user_id
+  });
+  
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(note.title);
   const [content, setContent] = useState(note.content);
@@ -25,7 +32,52 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
   const [sharedWithUsers, setSharedWithUsers] = useState<{ id: string; email: string }[]>([]);
   const [isLoadingSharedUsers, setIsLoadingSharedUsers] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
+  const [sharerEmail, setSharerEmail] = useState<string | null>(null);
+  const [isLoadingSharer, setIsLoadingSharer] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Fetch sharer information if this is a shared note
+  useEffect(() => {
+    const fetchSharerInfo = async () => {
+      if (isShared && note.id) {
+        setIsLoadingSharer(true);
+        try {
+          // Get the shared_notes entry to find who shared it
+          const { data: sharedNoteData, error: sharedNoteError } = await supabase
+            .from('shared_notes')
+            .select('shared_by')
+            .eq('note_id', note.id)
+            .single();
+            
+          if (sharedNoteError) {
+            console.error('Error fetching sharer info:', sharedNoteError);
+            return;
+          }
+          
+          if (sharedNoteData && sharedNoteData.shared_by) {
+            // Get the user's email using the RPC function
+            const { data: userData, error: userError } = await supabase
+              .rpc('get_users_by_ids', { user_ids: [sharedNoteData.shared_by] });
+              
+            if (userError) {
+              console.error('Error fetching user email:', userError);
+              return;
+            }
+            
+            if (userData && userData.length > 0 && userData[0].email) {
+              setSharerEmail(userData[0].email);
+            }
+          }
+        } catch (error) {
+          console.error('Error in fetchSharerInfo:', error);
+        } finally {
+          setIsLoadingSharer(false);
+        }
+      }
+    };
+    
+    fetchSharerInfo();
+  }, [isShared, note.id]);
 
   useEffect(() => {
     if (showShareModal) {
@@ -299,7 +351,26 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
       {!isEditing ? (
         <>
           <div className="flex justify-between items-start mb-2">
-            <h3 className="text-lg font-semibold text-gray-800">{note.title}</h3>
+            <div className="flex items-center">
+              <h3 className="text-lg font-semibold text-gray-800">{note.title}</h3>
+              {isShared && (
+                <div className="ml-2">
+                  {isLoadingSharer ? (
+                    <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                      Loading...
+                    </span>
+                  ) : sharerEmail ? (
+                    <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                      Shared by {sharerEmail}
+                    </span>
+                  ) : (
+                    <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                      Shared
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
             <div className="flex space-x-2">
               <button
                 onClick={() => setShowViewModal(true)}
