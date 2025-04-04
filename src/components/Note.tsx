@@ -66,7 +66,7 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId }) =
     }
   };
 
-  const handleInsertVerse = (reference: string, verseContent: string) => {
+  const handleInsertVerse = (reference: string) => {
     if (textareaRef.current) {
       const cursorPosition = textareaRef.current.selectionStart;
       const textBeforeCursor = content.substring(0, cursorPosition);

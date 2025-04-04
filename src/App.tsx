@@ -3,10 +3,9 @@ import { supabase } from './lib/supabase';
 import { Note as NoteComponent } from './components/Note';
 import { Auth } from './components/Auth';
 import { ErrorMessage } from './components/ErrorMessage';
-import { BibleApiTest } from './components/BibleApiTest';
 import { Note } from './types';
 import { DailyVerse } from './components/DailyVerse';
-import { searchBibleVerses, getAvailableBibles } from './lib/bibleApi';
+import { getAvailableBibles } from './lib/bibleApi';
 import { InlineBibleVerseSelector } from './components/InlineBibleVerseSelector';
 import { format } from 'date-fns';
 
