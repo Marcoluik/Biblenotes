@@ -58,27 +58,39 @@ export const BibleVerseHover: React.FC<BibleVerseHoverProps> = ({ reference, bib
 
   // Update popup position when hovered
   useEffect(() => {
-    if (isHovered && triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect();
+    if (isHovered && triggerRef.current && containerRef.current) {
+      const triggerRect = triggerRef.current.getBoundingClientRect();
+      const containerRect = containerRef.current.getBoundingClientRect();
       
-      // Always position directly below the trigger element
-      const top = rect.bottom + window.scrollY;
-      let left = rect.left + window.scrollX;
+      // Calculate position relative to the container
+      let top = triggerRect.bottom - containerRect.top + window.scrollY;
+      let left = triggerRect.left - containerRect.left + window.scrollX;
       
-      // If the popup would go off the right edge, adjust it
-      if (left + 320 > window.scrollX + window.innerWidth) {
-        left = window.scrollX + window.innerWidth - 320;
+      // --- Optional: Adjustments to keep it within viewport (can be refined) ---
+      const popupHeight = 300; // Approximate height
+      const popupWidth = 320;  // Width from className w-80 (80 * 4 = 320px)
+      const viewportHeight = window.innerHeight;
+      const viewportWidth = window.innerWidth;
+
+      // Check if it goes off the bottom
+      if (triggerRect.bottom + popupHeight > viewportHeight) {
+        // Position above the trigger instead
+        top = triggerRect.top - containerRect.top + window.scrollY - popupHeight;
       }
-      
-      // If the popup would go off the bottom of the screen, position it above the trigger
-      if (top + 300 > window.scrollY + window.innerHeight) {
-        setPopupPosition({ 
-          top: rect.top + window.scrollY - 300, 
-          left 
-        });
-      } else {
-        setPopupPosition({ top, left });
+
+      // Check if it goes off the right
+      if (triggerRect.left + popupWidth > viewportWidth) {
+        // Align right edge of popup with right edge of viewport
+        left = viewportWidth - containerRect.left + window.scrollX - popupWidth;
       }
+
+      // Check if it goes off the left
+      if (triggerRect.left < 0) {
+         left = -containerRect.left + window.scrollX; // Align with left edge of viewport
+      }
+      // --- End Optional Adjustments ---
+
+      setPopupPosition({ top, left });
     }
   }, [isHovered]);
 
@@ -101,7 +113,7 @@ export const BibleVerseHover: React.FC<BibleVerseHoverProps> = ({ reference, bib
       </span>
       
       <div 
-        className={`fixed z-[100] w-80 max-h-96 overflow-y-auto p-3 bg-white border rounded-lg shadow-lg transition-all duration-200 ease-in-out ${
+        className={`absolute z-[100] w-80 max-h-96 overflow-y-auto p-3 bg-white border rounded-lg shadow-lg transition-all duration-200 ease-in-out ${
           isHovered ? 'opacity-100 visible' : 'opacity-0 invisible'
         }`}
         style={{ 
