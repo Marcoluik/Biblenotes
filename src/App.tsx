@@ -338,11 +338,19 @@ function App() {
 
   const handleSignOut = async () => {
     try {
-      // Just use the Supabase client's signOut method
-      await supabase.auth.signOut();
+      // Use the Supabase client's signOut method
+      const { error } = await supabase.auth.signOut();
+      
+      if (error) {
+        console.error('Error signing out:', error);
+        // If there's an error, still sign out locally
+        setUser(null);
+        setNotes([]);
+        return;
+      }
       
       // The auth state change listener will handle setting user to null
-      // and clearing notes
+      // and clearing notes if signOut is successful
     } catch (error: any) {
       console.error('Error signing out:', error);
       // Still set user to null to allow the app to continue
