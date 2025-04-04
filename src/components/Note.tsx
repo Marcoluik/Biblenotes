@@ -60,24 +60,6 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId }) =
     }
   };
 
-  const handleDelete = () => {
-    if (window.confirm('Are you sure you want to delete this note? This action cannot be undone.')) {
-      onDelete(note.id);
-    }
-  };
-
-  const handleCancel = () => {
-    if (title !== note.title || content !== note.content) {
-      if (window.confirm('You have unsaved changes. Are you sure you want to cancel?')) {
-        setTitle(note.title);
-        setContent(note.content);
-        setIsEditing(false);
-      }
-    } else {
-      setIsEditing(false);
-    }
-  };
-
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === '@') {
       setShowInlineSelector(true);

@@ -8,6 +8,7 @@ import { Note } from './types';
 import { DailyVerse } from './components/DailyVerse';
 import { searchBibleVerses, getAvailableBibles } from './lib/bibleApi';
 import { InlineBibleVerseSelector } from './components/InlineBibleVerseSelector';
+import { format } from 'date-fns';
 
 function App() {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -382,7 +383,7 @@ function App() {
     }
   };
 
-  const handleInsertVerse = (reference: string, verseContent: string) => {
+  const handleInsertVerse = (reference: string) => {
     const textarea = newNoteTextareaRef.current;
     if (!textarea) return;
 

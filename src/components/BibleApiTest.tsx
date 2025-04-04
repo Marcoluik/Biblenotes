@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { searchBibleVerses, BibleVerse } from '../lib/bibleApi';
+import { getBibleVerse } from '../lib/bibleApi';
+import { BibleVerse } from '../types';
+import { searchBibleVerses } from '../lib/bibleApi';
 
 export const BibleApiTest: React.FC = () => {
   const [query, setQuery] = useState('');

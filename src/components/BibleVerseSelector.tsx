@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { searchBibleVerses, BibleVerse } from '../lib/bibleApi';
+import { searchBibleVerses } from '../lib/bibleApi';
+import { BibleVerse } from '../types';
 
 interface BibleVerseSelectorProps {
   onSelect: (verse: BibleVerse) => void;

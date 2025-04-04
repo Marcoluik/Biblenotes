@@ -1,6 +1,9 @@
 import axios from 'axios';
 import { BibleVerse } from '../types';
 
+// Export the BibleVerse type for use in other files
+export type { BibleVerse };
+
 // Get environment variables with fallbacks
 const API_KEY = import.meta.env.VITE_BIBLE_API_KEY || '541f6e15fa999cbd8f8c593ca4186332';
 const BIBLE_ID = import.meta.env.VITE_BIBLE_ID || '9879dbb7cfe39e4d-01';

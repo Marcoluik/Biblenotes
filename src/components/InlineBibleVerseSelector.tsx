@@ -16,7 +16,6 @@ export const InlineBibleVerseSelector: React.FC<InlineBibleVerseSelectorProps> =
   const [searchTerm, setSearchTerm] = useState('');
   const [verses, setVerses] = useState<BibleVerse[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [selectedVerse, setSelectedVerse] = useState<BibleVerse | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
