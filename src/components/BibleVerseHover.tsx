@@ -60,39 +60,49 @@ export const BibleVerseHover: React.FC<BibleVerseHoverProps> = ({ reference, bib
   useEffect(() => {
     if (isHovered && triggerRef.current && containerRef.current) {
       const triggerRect = triggerRef.current.getBoundingClientRect();
-      const containerRect = containerRef.current.getBoundingClientRect();
-      
-      // Calculate position relative to the container
-      let top = triggerRect.bottom - containerRect.top + window.scrollY;
-      let left = triggerRect.left - containerRect.left + window.scrollX;
-      
-      // --- Optional: Adjustments to keep it within viewport (can be refined) ---
-      const popupHeight = 300; // Approximate height
-      const popupWidth = 320;  // Width from className w-80 (80 * 4 = 320px)
+      const containerRect = containerRef.current.getBoundingClientRect(); // Parent is position: relative
+
+      // Calculate position relative to the container element
+      // Place the top of the popup at the bottom of the trigger
+      let top = triggerRect.height; // Start right below the trigger, within the container's coord system
+      let left = triggerRect.left - containerRect.left; // Align left edges
+
+      // --- Simplified Viewport Adjustments ---
+      // We still need some basic checks, but let's simplify them drastically.
+      // Note: These checks are still relative to the viewport, which might be the issue.
+      // A more robust solution might need a library like Floating UI, but let's try this.
+
+      const popupEstimatedHeight = 200; // Use a smaller estimate just in case
+      const popupWidth = 320;
       const viewportHeight = window.innerHeight;
       const viewportWidth = window.innerWidth;
 
-      // Check if it goes off the bottom
-      if (triggerRect.bottom + popupHeight > viewportHeight) {
-        // Position above the trigger instead
-        top = triggerRect.top - containerRect.top + window.scrollY - popupHeight;
+      // Check if it goes significantly off the bottom
+      // triggerRect.bottom is viewport-relative position of trigger's bottom
+      if (triggerRect.bottom + popupEstimatedHeight > viewportHeight) {
+        // Position *above* the trigger instead: negative top relative to trigger's top
+        top = -popupEstimatedHeight;
       }
 
       // Check if it goes off the right
       if (triggerRect.left + popupWidth > viewportWidth) {
-        // Align right edge of popup with right edge of viewport
-        left = viewportWidth - containerRect.left + window.scrollX - popupWidth;
+        // Try to align the right edge of the popup with the right edge of the trigger
+        left = (triggerRect.right - containerRect.left) - popupWidth;
       }
 
       // Check if it goes off the left
       if (triggerRect.left < 0) {
-         left = -containerRect.left + window.scrollX; // Align with left edge of viewport
+         // Align left edge of popup with left edge of container
+         left = 0;
       }
-      // --- End Optional Adjustments ---
 
       setPopupPosition({ top, left });
+    } else {
+      // Reset position when not hovered or refs aren't ready
+      // This might help if there's a stale position calculation
+      setPopupPosition({ top: 0, left: 0 });
     }
-  }, [isHovered]);
+  }, [isHovered]); // Dependency array remains the same
 
   return (
     <span 
