@@ -60,42 +60,25 @@ export const BibleVerseHover: React.FC<BibleVerseHoverProps> = ({ reference, bib
   useEffect(() => {
     if (isHovered && triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect();
-      const viewportHeight = window.innerHeight;
-      const viewportWidth = window.innerWidth;
       
-      // Calculate position to ensure popup is fully visible
-      let top = rect.bottom + window.scrollY;
+      // Always position directly below the trigger element
+      const top = rect.bottom + window.scrollY;
       let left = rect.left + window.scrollX;
       
-      // For small screens (mobile devices), position directly below the trigger
-      if (viewportWidth <= 768) {
-        // Position directly below the trigger
-        top = rect.bottom + window.scrollY;
-        
-        // Align with the left edge of the trigger
-        left = rect.left + window.scrollX;
-        
-        // If the popup would go off the right edge, adjust it
-        if (left + 320 > window.scrollX + viewportWidth) {
-          left = window.scrollX + viewportWidth - 320;
-        }
-        
-        // If the popup would go off the bottom of the screen, position it above the trigger
-        if (top + 300 > window.scrollY + viewportHeight) {
-          top = rect.top + window.scrollY - 300;
-        }
-      } else {
-        // For larger screens, use the original positioning logic
-        if (top + 300 > window.scrollY + viewportHeight) {
-          top = rect.top + window.scrollY - 300; // Position above the trigger
-        }
-        
-        if (left + 320 > window.scrollX + viewportWidth) {
-          left = window.scrollX + viewportWidth - 340; // Position to the left
-        }
+      // If the popup would go off the right edge, adjust it
+      if (left + 320 > window.scrollX + window.innerWidth) {
+        left = window.scrollX + window.innerWidth - 320;
       }
       
-      setPopupPosition({ top, left });
+      // If the popup would go off the bottom of the screen, position it above the trigger
+      if (top + 300 > window.scrollY + window.innerHeight) {
+        setPopupPosition({ 
+          top: rect.top + window.scrollY - 300, 
+          left 
+        });
+      } else {
+        setPopupPosition({ top, left });
+      }
     }
   }, [isHovered]);
 
