@@ -338,10 +338,23 @@ function App() {
 
   const handleSignOut = async () => {
     try {
+      // Clear the session from localStorage directly
+      localStorage.removeItem('supabase.auth.token');
+      
+      // Clear the session from Supabase client
       await supabase.auth.signOut();
+      
+      // Manually set user to null and clear notes
+      setUser(null);
+      setNotes([]);
+      
+      // Force a page reload to clear any cached state
+      window.location.reload();
     } catch (error: any) {
       console.error('Error signing out:', error);
-      setError(error.message);
+      // Still set user to null to allow the app to continue
+      setUser(null);
+      setNotes([]);
     }
   };
 
@@ -517,33 +530,33 @@ function App() {
           <h1 className="mobile-header-title font-bold text-gray-800 flex items-center">
             <span className="mr-2">📖</span> Bible Notes
           </h1>
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-3">
             <button
               onClick={() => setShowBibleModal(true)}
-              className="px-3 py-2 text-gray-600 hover:text-gray-800 border rounded-lg"
+              className="flex items-center justify-center w-10 h-10 text-gray-700 hover:text-gray-900 border border-gray-300 rounded-lg transition-all duration-200 hover:bg-gray-100 active:scale-95"
               title="Select Bible Translation"
             >
               📖
             </button>
             <button
               onClick={handleCreateNote}
-              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm transition-all duration-200 ease-in-out transform hover:scale-105"
+              className="flex items-center justify-center px-4 h-10 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm transition-all duration-200 hover:shadow-md active:scale-95"
             >
               Create Note
             </button>
             <div className="relative group">
-              <button className="p-2 text-gray-600 hover:text-gray-800">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <button className="flex items-center justify-center w-10 h-10 text-gray-700 hover:text-gray-900 transition-all duration-200 hover:bg-gray-100 rounded-lg active:scale-95 border border-gray-300">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
               </button>
-              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 ease-in-out">
-                <div className="px-4 py-2 text-sm text-gray-600 border-b">
+              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 ease-in-out border border-gray-200">
+                <div className="px-4 py-2 text-sm text-gray-700 border-b border-gray-200">
                   {user.email}
                 </div>
                 <button
                   onClick={handleSignOut}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors duration-200"
                 >
                   Sign Out
                 </button>
