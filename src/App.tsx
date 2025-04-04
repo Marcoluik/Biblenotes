@@ -464,7 +464,7 @@ function App() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="container mx-auto px-4 py-8 max-w-full">
       {error && (
         <ErrorMessage 
           message={error} 
@@ -472,22 +472,36 @@ function App() {
         />
       )}
       
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-gray-800">Bible Notes App</h1>
-        <div className="flex items-center space-x-4">
-          <span className="text-sm text-gray-600">{user.email}</span>
-          <button
-            onClick={handleSignOut}
-            className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800"
-          >
-            Sign Out
-          </button>
-          <button
-            onClick={handleCreateNote}
-            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
-          >
-            Create Note
-          </button>
+      {/* Mobile-friendly header */}
+      <div className="mobile-header bg-white rounded-lg shadow-md p-4 mb-8">
+        <div className="flex justify-between items-center">
+          <h1 className="mobile-header-title font-bold text-gray-800">Bible Notes</h1>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={handleCreateNote}
+              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm"
+            >
+              Create Note
+            </button>
+            <div className="relative group">
+              <button className="p-2 text-gray-600 hover:text-gray-800">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-2 hidden group-hover:block">
+                <div className="px-4 py-2 text-sm text-gray-600 border-b">
+                  {user.email}
+                </div>
+                <button
+                  onClick={handleSignOut}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                >
+                  Sign Out
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
