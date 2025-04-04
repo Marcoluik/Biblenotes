@@ -13,9 +13,10 @@ export const InlineBibleVerseSelector: React.FC<InlineBibleVerseSelectorProps> =
   onClose,
   bibleId
 }) => {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<BibleVerse[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [verses, setVerses] = useState<BibleVerse[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [selectedVerse, setSelectedVerse] = useState<BibleVerse | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -39,22 +40,22 @@ export const InlineBibleVerseSelector: React.FC<InlineBibleVerseSelectorProps> =
 
   useEffect(() => {
     const searchVerses = async () => {
-      if (searchQuery.length < 2) {
-        setSearchResults([]);
+      if (searchTerm.length < 2) {
+        setVerses([]);
         return;
       }
       
-      const cleanQuery = searchQuery.replace('@', '');
+      const cleanQuery = searchTerm.replace('@', '');
       
       console.log('🔎 Starting verse search with query:', cleanQuery);
-      setIsLoading(true);
+      setLoading(true);
       
       try {
         console.log('📤 Sending search request...');
         const results = await searchBibleVerses(cleanQuery, bibleId);
         console.log('📦 Search results:', results);
         
-        setSearchResults(results);
+        setVerses(results);
         if (results.length > 0) {
           console.log('✨ Auto-selecting first verse:', results[0]);
           setSelectedVerse(results[0]);
@@ -67,16 +68,16 @@ export const InlineBibleVerseSelector: React.FC<InlineBibleVerseSelectorProps> =
           query: cleanQuery,
           errorMessage: error.message
         });
-        setSearchResults([]);
+        setVerses([]);
       } finally {
-        setIsLoading(false);
+        setLoading(false);
       }
     };
 
-    console.log('⏳ Debouncing search for query:', searchQuery);
+    console.log('⏳ Debouncing search for query:', searchTerm);
     const timeoutId = setTimeout(searchVerses, 300);
     return () => clearTimeout(timeoutId);
-  }, [searchQuery, bibleId]);
+  }, [searchTerm, bibleId]);
 
   const handleVerseSelect = (verse: BibleVerse) => {
     console.log('🎯 Selected verse:', verse);
@@ -92,24 +93,6 @@ export const InlineBibleVerseSelector: React.FC<InlineBibleVerseSelectorProps> =
       });
       onInsertVerse(selectedVerse.reference, content);
       onClose();
-    }
-  };
-
-  const handleSearch = async (query: string) => {
-    if (!query.trim()) {
-      setSearchResults([]);
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const results = await searchBibleVerses(query, bibleId);
-      setSearchResults(results);
-    } catch (error) {
-      console.error('Error searching for verses:', error);
-      setSearchResults([]);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -134,20 +117,20 @@ export const InlineBibleVerseSelector: React.FC<InlineBibleVerseSelectorProps> =
           <input
             ref={inputRef}
             type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search for a verse (e.g., John 3:16)"
             className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
         
-        {isLoading ? (
+        {loading ? (
           <div className="flex justify-center py-4">
             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
           </div>
-        ) : searchResults.length > 0 ? (
+        ) : verses.length > 0 ? (
           <div className="max-h-60 overflow-y-auto mb-4">
-            {searchResults.map((verse) => (
+            {verses.map((verse) => (
               <div
                 key={verse.id}
                 className={`p-2 mb-2 rounded cursor-pointer ${
@@ -162,7 +145,7 @@ export const InlineBibleVerseSelector: React.FC<InlineBibleVerseSelectorProps> =
               </div>
             ))}
           </div>
-        ) : searchQuery.length >= 2 ? (
+        ) : searchTerm.length >= 2 ? (
           <div className="text-center py-4 text-gray-500">
             Try searching for a book name (e.g., "John") or a specific verse (e.g., "John 3:16")
           </div>

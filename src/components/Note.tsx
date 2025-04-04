@@ -16,11 +16,11 @@ interface NoteProps {
 }
 
 export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId }) => {
+  const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(note.title);
   const [content, setContent] = useState(note.content);
-  const [showInlineSelector, setShowInlineSelector] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [showInlineSelector, setShowInlineSelector] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSave = async () => {
@@ -146,27 +146,18 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId }) =
   };
 
   const renderContent = () => {
-    if (!content) return '';
-    
-    // First split by verse references
-    const parts = content.split(/(\[[^\]]+\])/g);
-    
-    return parts.map((part, index) => {
-      // Check if this part is a verse reference
-      const verseMatch = part.match(/^\[([^\]]+)\]$/);
+    return content.split('\n').map((line, index) => {
+      // Check if the line contains a Bible verse reference
+      const verseMatch = line.match(/\[(.*?)\]/);
       if (verseMatch) {
         const reference = verseMatch[1];
-        return <BibleVerseHover key={index} reference={reference} bibleId={bibleId} />;
+        return (
+          <div key={index} className="mb-2">
+            <BibleVerseHover reference={reference} bibleId={bibleId} />
+          </div>
+        );
       }
-      
-      // Process markdown formatting
-      let formattedPart = part
-        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.*?)\*/g, '<em>$1</em>')
-        .replace(/__(.*?)__/g, '<u>$1</u>')
-        .replace(/^> (.*)$/gm, '<blockquote>$1</blockquote>');
-      
-      return <span key={index} dangerouslySetInnerHTML={{ __html: formattedPart }} />;
+      return <div key={index}>{line}</div>;
     });
   };
 

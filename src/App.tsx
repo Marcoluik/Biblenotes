@@ -34,14 +34,6 @@ function App() {
   const [isBibleDropdownOpen, setIsBibleDropdownOpen] = useState(false);
   const bibleDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Add this temporary debug log
-  console.log('Environment variables check:', {
-    bibleApiKey: import.meta.env.VITE_BIBLE_API_KEY ? 'Present' : 'Missing',
-    bibleId: import.meta.env.VITE_BIBLE_ID ? 'Present' : 'Missing',
-    supabaseUrl: import.meta.env.VITE_SUPABASE_URL ? 'Present' : 'Missing',
-    supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY ? 'Present' : 'Missing'
-  });
-
   useEffect(() => {
     // Check for existing session
     const checkSession = async () => {
@@ -79,7 +71,6 @@ function App() {
     const fetchBibles = async () => {
       try {
         const bibles = await getAvailableBibles();
-        console.log('Fetched Bibles:', bibles); // Debug log
         
         if (bibles.length === 0) {
           console.log('No Bibles found, using default Bible ID');

@@ -17,8 +17,8 @@ export interface User {
 
 export interface BibleVerse {
   id: string;
-  reference: string;
-  content?: string;
+  bibleId?: string;
+  content: string;
   text?: string;
-  verse?: string;
+  reference: string;
 } 
