@@ -67,20 +67,22 @@ export const BibleVerseHover: React.FC<BibleVerseHoverProps> = ({ reference, bib
       let top = rect.bottom + window.scrollY;
       let left = rect.left + window.scrollX;
       
-      // For small screens (mobile devices), always position below the trigger
+      // For small screens (mobile devices), position directly below the trigger
       if (viewportWidth <= 768) {
+        // Position directly below the trigger
         top = rect.bottom + window.scrollY;
-        // Center the popup horizontally relative to the trigger
-        left = rect.left + window.scrollX - 160; // Half of the popup width (320px)
         
-        // Ensure the popup doesn't go off the left edge
-        if (left < window.scrollX) {
-          left = window.scrollX;
-        }
+        // Align with the left edge of the trigger
+        left = rect.left + window.scrollX;
         
-        // Ensure the popup doesn't go off the right edge
+        // If the popup would go off the right edge, adjust it
         if (left + 320 > window.scrollX + viewportWidth) {
           left = window.scrollX + viewportWidth - 320;
+        }
+        
+        // If the popup would go off the bottom of the screen, position it above the trigger
+        if (top + 300 > window.scrollY + viewportHeight) {
+          top = rect.top + window.scrollY - 300;
         }
       } else {
         // For larger screens, use the original positioning logic
