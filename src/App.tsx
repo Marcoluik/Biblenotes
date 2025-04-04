@@ -22,6 +22,7 @@ function App() {
   const [isNewCategory, setIsNewCategory] = useState(false);
   const [showInlineSelector, setShowInlineSelector] = useState(false);
   const [showAddNoteForm, setShowAddNoteForm] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   const newNoteTextareaRef = useRef<HTMLTextAreaElement>(null);
   const newCategoryInputRef = useRef<HTMLInputElement>(null);
   
@@ -33,6 +34,9 @@ function App() {
   const [isBibleDropdownOpen, setIsBibleDropdownOpen] = useState(false);
   const bibleDropdownRef = useRef<HTMLDivElement>(null);
   const [showBibleModal, setShowBibleModal] = useState(false);
+
+  const [sharedNotes, setSharedNotes] = useState<Note[]>([]);
+  const [activeTab, setActiveTab] = useState<'my-notes' | 'shared-notes'>('my-notes');
 
   useEffect(() => {
     // Check for existing session
@@ -164,18 +168,30 @@ function App() {
 
   const fetchNotes = async (userId: string) => {
     try {
-      const { data, error } = await supabase
+      // Fetch user's own notes
+      const { data: userNotes, error: userNotesError } = await supabase
         .from('notes')
         .select('*')
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setNotes(data || []);
+      if (userNotesError) throw userNotesError;
+      setNotes(userNotes || []);
       
-      // Extract unique categories
+      // Fetch notes shared with the user
+      const { data: sharedNotesData, error: sharedNotesError } = await supabase
+        .from('notes')
+        .select('*, shared_notes!inner(*)')
+        .eq('shared_notes.shared_with', userId)
+        .order('created_at', { ascending: false });
+
+      if (sharedNotesError) throw sharedNotesError;
+      setSharedNotes(sharedNotesData || []);
+      
+      // Extract unique categories from both user notes and shared notes
+      const allNotes = [...(userNotes || []), ...(sharedNotesData || [])];
       const uniqueCategories = Array.from(new Set(
-        data
+        allNotes
           .map((note: Note) => note.category)
           .filter((category): category is string => typeof category === 'string')
       ));
@@ -515,7 +531,7 @@ function App() {
 
       {/* Bible Translation Modal */}
       {showBibleModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-bold">Select Bible Translation</h2>
@@ -558,216 +574,185 @@ function App() {
       {/* Daily Verse */}
       <DailyVerse bibleId={selectedBibleId} />
       
+      {/* Tabs for My Notes and Shared Notes */}
+      <div className="mb-4 border-b border-gray-200">
+        <ul className="flex flex-wrap -mb-px text-sm font-medium text-center">
+          <li className="mr-2">
+            <button
+              onClick={() => setActiveTab('my-notes')}
+              className={`inline-block p-4 rounded-t-lg ${
+                activeTab === 'my-notes'
+                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  : 'text-gray-500 hover:text-gray-600 hover:border-gray-300'
+              }`}
+            >
+              My Notes
+            </button>
+          </li>
+          <li className="mr-2">
+            <button
+              onClick={() => setActiveTab('shared-notes')}
+              className={`inline-block p-4 rounded-t-lg ${
+                activeTab === 'shared-notes'
+                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  : 'text-gray-500 hover:text-gray-600 hover:border-gray-300'
+              }`}
+            >
+              Shared with Me
+              {sharedNotes.length > 0 && (
+                <span className="ml-2 bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                  {sharedNotes.length}
+                </span>
+              )}
+            </button>
+          </li>
+        </ul>
+      </div>
+      
       {/* Filters Row */}
-      <div className="flex flex-col md:flex-row gap-4 mb-6">
-        {/* Category Filter */}
-        <div className="w-full md:w-auto">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Filter by Category
-          </label>
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <div className="flex-1 min-w-[200px]">
+          <input
+            type="text"
+            placeholder="Search notes..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        <div className="w-full sm:w-auto">
           <select
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
             className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            <option value="all">All Notes</option>
+            <option value="all">All Categories</option>
             {categories.map(category => (
               <option key={category} value={category}>{category}</option>
             ))}
           </select>
         </div>
-
-        {/* Bible Selection */}
-        <div className="w-full md:w-auto">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Select Bible Translation
-          </label>
-          <div className="relative" ref={bibleDropdownRef}>
-            <div 
-              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer flex justify-between items-center"
-              onClick={() => setIsBibleDropdownOpen(!isBibleDropdownOpen)}
-              onKeyDown={handleBibleKeyDown}
-              tabIndex={0}
-              role="combobox"
-              aria-expanded={isBibleDropdownOpen}
-              aria-haspopup="listbox"
-              aria-controls="bible-listbox"
-            >
-              <span>
-                {availableBibles.find(bible => bible.id === selectedBibleId)?.name || 'Select Bible'}
-              </span>
-              <span>{isBibleDropdownOpen ? '▲' : '▼'}</span>
-            </div>
-            
-            {isBibleDropdownOpen && (
-              <div 
-                className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto"
-                id="bible-listbox"
-                role="listbox"
+      </div>
+      
+      {/* Notes Grid */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {activeTab === 'my-notes' ? (
+          filteredNotes.length > 0 ? (
+            filteredNotes.map((note) => (
+              <NoteComponent
+                key={note.id}
+                note={note}
+                onSave={handleSaveNote}
+                onDelete={handleDeleteNote}
+                bibleId={selectedBibleId}
+              />
+            ))
+          ) : (
+            <div className="col-span-full text-center py-8">
+              <p className="text-gray-500 mb-4">No notes yet</p>
+              <button
+                onClick={handleCreateNote}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
               >
-                <div className="sticky top-0 bg-white p-2 border-b">
-                  <input
-                    type="text"
-                    placeholder="Search Bible translations..."
-                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    value={bibleSearchTerm}
-                    onChange={(e) => setBibleSearchTerm(e.target.value)}
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                </div>
-                <div className="py-1">
-                  {filteredBibles.length > 0 ? (
-                    filteredBibles.map(bible => (
-                      <div
-                        key={bible.id}
-                        className={`px-3 py-2 cursor-pointer hover:bg-gray-100 ${bible.id === selectedBibleId ? 'bg-blue-50' : ''}`}
-                        onClick={() => {
-                          setSelectedBibleId(bible.id);
-                          setIsBibleDropdownOpen(false);
-                        }}
-                        role="option"
-                        aria-selected={bible.id === selectedBibleId}
-                      >
-                        {bible.name} ({bible.language.name})
-                      </div>
-                    ))
-                  ) : (
-                    <div className="px-3 py-2 text-gray-500">No matching Bibles found</div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+                Create Your First Note
+              </button>
+            </div>
+          )
+        ) : (
+          sharedNotes.length > 0 ? (
+            sharedNotes.map((note) => (
+              <NoteComponent
+                key={note.id}
+                note={note}
+                onSave={handleSaveNote}
+                onDelete={handleDeleteNote}
+                bibleId={selectedBibleId}
+                isShared={true}
+              />
+            ))
+          ) : (
+            <div className="col-span-full text-center py-8">
+              <p className="text-gray-500">No notes shared with you yet</p>
+            </div>
+          )
+        )}
       </div>
 
       {/* New Note Form */}
       {showAddNoteForm && (
-        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-          <h2 className="text-xl font-bold mb-4">Add Note</h2>
-          <div className="mb-4">
-            <input
-              type="text"
-              value={newNoteTitle}
-              onChange={(e) => setNewNoteTitle(e.target.value)}
-              placeholder="Note title"
-              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div className="mb-2 flex space-x-2 p-2 bg-gray-100 rounded-lg">
-            <button
-              onClick={() => applyFormatting('bold')}
-              className="p-1 hover:bg-gray-200 rounded"
-              title="Bold"
-            >
-              <strong>B</strong>
-            </button>
-            <button
-              onClick={() => applyFormatting('italic')}
-              className="p-1 hover:bg-gray-200 rounded"
-              title="Italic"
-            >
-              <em>I</em>
-            </button>
-            <button
-              onClick={() => applyFormatting('underline')}
-              className="p-1 hover:bg-gray-200 rounded"
-              title="Underline"
-            >
-              <u>U</u>
-            </button>
-            <button
-              onClick={() => applyFormatting('quote')}
-              className="p-1 hover:bg-gray-200 rounded"
-              title="Quote"
-            >
-              "
-            </button>
-            <button
-              onClick={() => setShowInlineSelector(true)}
-              className="p-1 hover:bg-gray-200 rounded"
-              title="Insert Bible Verse"
-            >
-              📖
-            </button>
-          </div>
-          <div className="mb-4">
-            <textarea
-              ref={newNoteTextareaRef}
-              value={newNoteContent}
-              onChange={(e) => setNewNoteContent(e.target.value)}
-              onKeyDown={handleNewNoteKeyDown}
-              placeholder="Write your note here..."
-              className="w-full h-32 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div className="mb-4">
-            {isNewCategory ? (
-              <div className="flex space-x-2">
-                <input
-                  type="text"
-                  ref={newCategoryInputRef}
-                  value={newNoteCategory || ''}
-                  onChange={(e) => setNewNoteCategory(e.target.value)}
-                  placeholder="Enter new category"
-                  className="flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <button
-                  onClick={() => setIsNewCategory(false)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-100"
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
-              <select
-                value={newNoteCategory || ''}
-                onChange={handleCategoryChange}
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold">Create New Note</h2>
+              <button
+                onClick={() => setShowAddNoteForm(false)}
+                className="text-gray-500 hover:text-gray-700"
               >
-                <option value="">Select a category (optional)</option>
-                {categories.map(category => (
-                  <option key={category} value={category}>{category}</option>
-                ))}
-                <option value="new">+ Add new category</option>
-              </select>
-            )}
+                ✕
+              </button>
+            </div>
+            <div className="mb-4">
+              <input
+                type="text"
+                value={newNoteTitle}
+                onChange={(e) => setNewNoteTitle(e.target.value)}
+                placeholder="Note title"
+                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="mb-4">
+              <textarea
+                ref={newNoteTextareaRef}
+                value={newNoteContent}
+                onChange={(e) => setNewNoteContent(e.target.value)}
+                onKeyDown={handleNewNoteKeyDown}
+                placeholder="Write your note here..."
+                className="w-full h-32 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="mb-4">
+              {isNewCategory ? (
+                <div className="flex space-x-2">
+                  <input
+                    type="text"
+                    ref={newCategoryInputRef}
+                    value={newNoteCategory || ''}
+                    onChange={(e) => setNewNoteCategory(e.target.value)}
+                    placeholder="Enter new category"
+                    className="flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    onClick={() => setIsNewCategory(false)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-100"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <select
+                  value={newNoteCategory || ''}
+                  onChange={handleCategoryChange}
+                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select a category (optional)</option>
+                  {categories.map(category => (
+                    <option key={category} value={category}>{category}</option>
+                  ))}
+                  <option value="new">+ Add new category</option>
+                </select>
+              )}
+            </div>
+            <div className="flex justify-end">
+              <button
+                onClick={handleAddNote}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+              >
+                Add Note
+              </button>
+            </div>
           </div>
-          <div className="flex space-x-2">
-            <button
-              onClick={handleAddNote}
-              className="flex-1 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
-            >
-              Add Note
-            </button>
-            <button
-              onClick={() => setShowAddNoteForm(false)}
-              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100"
-            >
-              Cancel
-            </button>
-          </div>
-          {showInlineSelector && (
-            <InlineBibleVerseSelector
-              onInsertVerse={handleInsertVerse}
-              onClose={() => setShowInlineSelector(false)}
-              bibleId={selectedBibleId}
-            />
-          )}
         </div>
       )}
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {filteredNotes.map((note) => (
-          <NoteComponent
-            key={note.id}
-            note={note}
-            onSave={handleSaveNote}
-            onDelete={handleDeleteNote}
-            bibleId={selectedBibleId}
-          />
-        ))}
-      </div>
     </div>
   );
 }
