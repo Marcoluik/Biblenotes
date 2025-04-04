@@ -32,6 +32,7 @@ function App() {
   const [filteredBibles, setFilteredBibles] = useState<{ id: string; name: string; language: { id: string; name: string } }[]>([]);
   const [isBibleDropdownOpen, setIsBibleDropdownOpen] = useState(false);
   const bibleDropdownRef = useRef<HTMLDivElement>(null);
+  const [showBibleModal, setShowBibleModal] = useState(false);
 
   useEffect(() => {
     // Check for existing session
@@ -478,6 +479,13 @@ function App() {
           <h1 className="mobile-header-title font-bold text-gray-800">Bible Notes</h1>
           <div className="flex items-center space-x-2">
             <button
+              onClick={() => setShowBibleModal(true)}
+              className="px-3 py-2 text-gray-600 hover:text-gray-800 border rounded-lg"
+              title="Select Bible Translation"
+            >
+              📖
+            </button>
+            <button
               onClick={handleCreateNote}
               className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm"
             >
@@ -504,6 +512,48 @@ function App() {
           </div>
         </div>
       </div>
+
+      {/* Bible Translation Modal */}
+      {showBibleModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold">Select Bible Translation</h2>
+              <button
+                onClick={() => setShowBibleModal(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Search Bible translations..."
+                className="w-full px-3 py-2 border rounded-lg mb-4"
+                value={bibleSearchTerm}
+                onChange={(e) => setBibleSearchTerm(e.target.value)}
+              />
+              <div className="max-h-60 overflow-y-auto">
+                {filteredBibles.map(bible => (
+                  <button
+                    key={bible.id}
+                    onClick={() => {
+                      setSelectedBibleId(bible.id);
+                      setShowBibleModal(false);
+                    }}
+                    className={`w-full text-left px-4 py-2 hover:bg-gray-100 ${
+                      bible.id === selectedBibleId ? 'bg-blue-50' : ''
+                    }`}
+                  >
+                    {bible.name} ({bible.language.name})
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Daily Verse */}
       <DailyVerse bibleId={selectedBibleId} />

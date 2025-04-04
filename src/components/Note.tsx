@@ -128,19 +128,31 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId }) =
   };
 
   const renderContent = () => {
-    return content.split('\n').map((line, index) => {
-      // Check if the line contains a Bible verse reference
-      const verseMatch = line.match(/\[(.*?)\]/);
-      if (verseMatch) {
-        const reference = verseMatch[1];
-        return (
-          <div key={index} className="mb-2">
-            <BibleVerseHover reference={reference} bibleId={bibleId} />
-          </div>
-        );
-      }
-      return <div key={index}>{line}</div>;
-    });
+    if (!isEditing) {
+      const lines = content.split('\n');
+      return lines.map((line, index) => {
+        // Check if the line contains a Bible verse reference
+        const verseMatch = line.match(/\[(.*?)\]/);
+        if (verseMatch) {
+          const reference = verseMatch[1];
+          return (
+            <div key={index} className="mb-2">
+              <BibleVerseHover reference={reference} bibleId={bibleId} />
+            </div>
+          );
+        }
+        return <div key={index} className="mb-2">{line}</div>;
+      });
+    }
+    return (
+      <textarea
+        ref={textareaRef}
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+        onKeyDown={handleKeyDown}
+        className="w-full h-32 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+      />
+    );
   };
 
   return (
