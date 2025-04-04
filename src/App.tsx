@@ -338,18 +338,11 @@ function App() {
 
   const handleSignOut = async () => {
     try {
-      // Clear the session from localStorage directly
-      localStorage.removeItem('supabase.auth.token');
-      
-      // Clear the session from Supabase client
+      // Just use the Supabase client's signOut method
       await supabase.auth.signOut();
       
-      // Manually set user to null and clear notes
-      setUser(null);
-      setNotes([]);
-      
-      // Force a page reload to clear any cached state
-      window.location.reload();
+      // The auth state change listener will handle setting user to null
+      // and clearing notes
     } catch (error: any) {
       console.error('Error signing out:', error);
       // Still set user to null to allow the app to continue
@@ -540,7 +533,7 @@ function App() {
             </button>
             <button
               onClick={handleCreateNote}
-              className="flex items-center justify-center px-4 h-10 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm transition-all duration-200 hover:shadow-md active:scale-95"
+              className="hidden md:flex items-center justify-center px-4 h-10 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm transition-all duration-200 hover:shadow-md active:scale-95"
             >
               Create Note
             </button>
@@ -564,6 +557,19 @@ function App() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Floating Create Note Button (Mobile) */}
+      <div className="md:hidden fixed bottom-6 right-6 z-40">
+        <button
+          onClick={handleCreateNote}
+          className="flex items-center justify-center w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 text-sm transition-all duration-200 hover:shadow-xl active:scale-95"
+          aria-label="Create Note"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+        </button>
       </div>
 
       {/* Bible Translation Modal */}

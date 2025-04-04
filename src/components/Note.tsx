@@ -348,158 +348,182 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
 
   return (
     <div className="bg-white rounded-lg shadow-md p-4 mb-4 hover:shadow-lg transition-shadow duration-200">
-      {!isEditing ? (
-        <>
-          <div className="flex justify-between items-start mb-2">
-            <div className="flex items-center">
-              <h3 className="text-lg font-semibold text-gray-800">{note.title}</h3>
-              {isShared && (
-                <div className="ml-2">
-                  {isLoadingSharer ? (
-                    <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
-                      Loading...
-                    </span>
-                  ) : sharerEmail ? (
-                    <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
-                      Shared by {sharerEmail}
-                    </span>
-                  ) : (
-                    <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
-                      Shared
-                    </span>
-                  )}
+      <div className="flex justify-between items-start mb-2">
+        <div className="flex items-center">
+          <h3 className="text-lg font-semibold text-gray-800">{note.title}</h3>
+          {isShared && (
+            <div className="ml-2">
+              {isLoadingSharer ? (
+                <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                  Loading...
+                </span>
+              ) : sharerEmail ? (
+                <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                  Shared by {sharerEmail}
+                </span>
+              ) : (
+                <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                  Shared
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="flex space-x-1">
+          <button
+            onClick={() => setShowViewModal(true)}
+            className="text-blue-500 hover:text-blue-700 p-1"
+            title="View Note"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+          </button>
+          <button
+            onClick={() => setIsEditing(true)}
+            className="text-blue-500 hover:text-blue-700 p-1"
+            title="Edit Note"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
+          {!isShared && (
+            <>
+              <button
+                onClick={() => setShowShareModal(true)}
+                className="text-green-500 hover:text-green-700 p-1"
+                title="Share Note"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                </svg>
+              </button>
+              <button
+                onClick={() => onDelete(note.id)}
+                className="text-red-500 hover:text-red-700 p-1"
+                title="Delete Note"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+      <div className="text-gray-700 whitespace-pre-wrap mb-2">
+        {renderContent()}
+      </div>
+      {note.category && (
+        <div className="text-sm text-gray-500">
+          Category: {note.category}
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {isEditing && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="flex justify-between items-center p-4 border-b">
+              <h2 className="text-xl font-bold text-gray-800">Edit Note</h2>
+              <button
+                onClick={() => setIsEditing(false)}
+                className="text-gray-500 hover:text-gray-700 p-2 rounded-full hover:bg-gray-100 transition-colors"
+                aria-label="Close"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            {/* Content */}
+            <div className="p-4 overflow-y-auto flex-grow">
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="w-full px-3 py-2 mb-4 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Note title"
+              />
+              
+              <div className="mb-4 flex space-x-2 p-2 bg-gray-100 rounded-lg">
+                <button
+                  onClick={() => applyFormatting('bold')}
+                  className="p-1 hover:bg-gray-200 rounded"
+                  title="Bold"
+                >
+                  <strong>B</strong>
+                </button>
+                <button
+                  onClick={() => applyFormatting('italic')}
+                  className="p-1 hover:bg-gray-200 rounded"
+                  title="Italic"
+                >
+                  <em>I</em>
+                </button>
+                <button
+                  onClick={() => applyFormatting('underline')}
+                  className="p-1 hover:bg-gray-200 rounded"
+                  title="Underline"
+                >
+                  <u>U</u>
+                </button>
+                <button
+                  onClick={() => applyFormatting('quote')}
+                  className="p-1 hover:bg-gray-200 rounded"
+                  title="Quote"
+                >
+                  "
+                </button>
+                <button
+                  onClick={() => setShowInlineSelector(true)}
+                  className="p-1 hover:bg-gray-200 rounded"
+                  title="Insert Bible Verse"
+                >
+                  📖
+                </button>
+              </div>
+              
+              <textarea
+                ref={textareaRef}
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                onKeyDown={handleKeyDown}
+                className="w-full h-64 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Write your note here..."
+              />
+              
+              {showInlineSelector && (
+                <div className="mt-4">
+                  <InlineBibleVerseSelector 
+                    onInsertVerse={handleInsertVerse} 
+                    bibleId={bibleId} 
+                    onClose={() => setShowInlineSelector(false)}
+                  />
                 </div>
               )}
             </div>
-            <div className="flex space-x-2">
+            
+            {/* Footer */}
+            <div className="p-4 border-t flex justify-between items-center">
               <button
-                onClick={() => setShowViewModal(true)}
-                className="text-blue-500 hover:text-blue-700 p-1"
-                title="View Note"
+                onClick={() => setIsEditing(false)}
+                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                </svg>
+                Cancel
               </button>
               <button
-                onClick={() => setIsEditing(true)}
-                className="text-blue-500 hover:text-blue-700 p-1"
-                title="Edit Note"
+                onClick={handleSave}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
+                Save
               </button>
-              {!isShared && (
-                <>
-                  <button
-                    onClick={() => setShowShareModal(true)}
-                    className="text-green-500 hover:text-green-700 p-1"
-                    title="Share Note"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                    </svg>
-                  </button>
-                  <button
-                    onClick={() => onDelete(note.id)}
-                    className="text-red-500 hover:text-red-700 p-1"
-                    title="Delete Note"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
-                </>
-              )}
             </div>
           </div>
-          <div className="text-gray-700 whitespace-pre-wrap mb-2">
-            {renderContent()}
-          </div>
-          {note.category && (
-            <div className="text-sm text-gray-500">
-              Category: {note.category}
-            </div>
-          )}
-        </>
-      ) : (
-        <div>
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="w-full px-3 py-2 mb-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <div className="mb-2 flex space-x-2 p-2 bg-gray-100 rounded-lg">
-            <button
-              onClick={() => applyFormatting('bold')}
-              className="p-1 hover:bg-gray-200 rounded"
-              title="Bold"
-            >
-              <strong>B</strong>
-            </button>
-            <button
-              onClick={() => applyFormatting('italic')}
-              className="p-1 hover:bg-gray-200 rounded"
-              title="Italic"
-            >
-              <em>I</em>
-            </button>
-            <button
-              onClick={() => applyFormatting('underline')}
-              className="p-1 hover:bg-gray-200 rounded"
-              title="Underline"
-            >
-              <u>U</u>
-            </button>
-            <button
-              onClick={() => applyFormatting('quote')}
-              className="p-1 hover:bg-gray-200 rounded"
-              title="Quote"
-            >
-              "
-            </button>
-            <button
-              onClick={() => setShowInlineSelector(true)}
-              className="p-1 hover:bg-gray-200 rounded"
-              title="Insert Bible Verse"
-            >
-              📖
-            </button>
-          </div>
-          <textarea
-            ref={textareaRef}
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            onKeyDown={handleKeyDown}
-            className="w-full h-32 px-2 py-1 border rounded mb-2"
-            placeholder="Write your note here..."
-          />
-          <div className="flex justify-end mt-2 space-x-2">
-            <button
-              onClick={() => setIsEditing(false)}
-              className="px-3 py-1 text-gray-600 hover:text-gray-800"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              className="px-3 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
-            >
-              Save
-            </button>
-          </div>
-          {showInlineSelector && (
-            <div className="mt-2">
-              <InlineBibleVerseSelector 
-                onInsertVerse={handleInsertVerse} 
-                bibleId={bibleId} 
-                onClose={() => setShowInlineSelector(false)}
-              />
-            </div>
-          )}
         </div>
       )}
 
@@ -511,9 +535,12 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
               <h2 className="text-xl font-bold">Share Note</h2>
               <button
                 onClick={() => setShowShareModal(false)}
-                className="text-gray-500 hover:text-gray-700"
+                className="text-gray-500 hover:text-gray-700 p-2 rounded-full hover:bg-gray-100 transition-colors"
+                aria-label="Close"
               >
-                ✕
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
             </div>
             
