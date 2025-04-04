@@ -7,7 +7,6 @@ import { Note } from './types';
 import { DailyVerse } from './components/DailyVerse';
 import { getAvailableBibles } from './lib/bibleApi';
 import { InlineBibleVerseSelector } from './components/InlineBibleVerseSelector';
-import { format } from 'date-fns';
 
 function App() {
   const [notes, setNotes] = useState<Note[]>([]);
