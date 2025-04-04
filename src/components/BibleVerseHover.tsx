@@ -59,50 +59,36 @@ export const BibleVerseHover: React.FC<BibleVerseHoverProps> = ({ reference, bib
   // Update popup position when hovered
   useEffect(() => {
     if (isHovered && triggerRef.current && containerRef.current) {
-      const triggerRect = triggerRef.current.getBoundingClientRect();
-      const containerRect = containerRef.current.getBoundingClientRect(); // Parent is position: relative
+      // Ensure the container is the offset parent (or find the correct one if needed)
+      // This assumes containerRef.current *is* the offsetParent due to position: relative
+      const triggerEl = triggerRef.current;
+      const containerEl = containerRef.current;
 
-      // Calculate position relative to the container element
-      // Place the top of the popup at the bottom of the trigger
-      let top = triggerRect.height; // Start right below the trigger, within the container's coord system
-      let left = triggerRect.left - containerRect.left; // Align left edges
+      // Check if the container is indeed the offsetParent
+      if (triggerEl.offsetParent === containerEl) {
+        // Calculate position using offsetTop/Left relative to the offsetParent (container)
+        const top = triggerEl.offsetTop + triggerEl.offsetHeight; // Position below the trigger
+        const left = triggerEl.offsetLeft; // Align left edges
 
-      // --- Simplified Viewport Adjustments ---
-      // We still need some basic checks, but let's simplify them drastically.
-      // Note: These checks are still relative to the viewport, which might be the issue.
-      // A more robust solution might need a library like Floating UI, but let's try this.
-
-      const popupEstimatedHeight = 200; // Use a smaller estimate just in case
-      const popupWidth = 320;
-      const viewportHeight = window.innerHeight;
-      const viewportWidth = window.innerWidth;
-
-      // Check if it goes significantly off the bottom
-      // triggerRect.bottom is viewport-relative position of trigger's bottom
-      if (triggerRect.bottom + popupEstimatedHeight > viewportHeight) {
-        // Position *above* the trigger instead: negative top relative to trigger's top
-        top = -popupEstimatedHeight;
+        // NO VIEWPORT ADJUSTMENTS for now
+        setPopupPosition({ top, left });
+      } else {
+         // Fallback or error handling if offsetParent isn't the container
+         // This might happen with complex layouts, but shouldn't here.
+         // Use previous simple calculation as a basic fallback.
+         console.warn("BibleVerseHover: trigger's offsetParent is not the container span. Check CSS/Layout.");
+         const triggerRect = triggerEl.getBoundingClientRect();
+         const containerRect = containerEl.getBoundingClientRect();
+         const top = triggerRect.bottom - containerRect.top;
+         const left = triggerRect.left - containerRect.left;
+         setPopupPosition({ top, left });
       }
 
-      // Check if it goes off the right
-      if (triggerRect.left + popupWidth > viewportWidth) {
-        // Try to align the right edge of the popup with the right edge of the trigger
-        left = (triggerRect.right - containerRect.left) - popupWidth;
-      }
-
-      // Check if it goes off the left
-      if (triggerRect.left < 0) {
-         // Align left edge of popup with left edge of container
-         left = 0;
-      }
-
-      setPopupPosition({ top, left });
     } else {
       // Reset position when not hovered or refs aren't ready
-      // This might help if there's a stale position calculation
       setPopupPosition({ top: 0, left: 0 });
     }
-  }, [isHovered]); // Dependency array remains the same
+  }, [isHovered]);
 
   return (
     <span 
