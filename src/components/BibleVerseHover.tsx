@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { searchBibleVerses } from '../lib/bibleApi';
 
 interface BibleVerseHoverProps {
@@ -11,9 +12,23 @@ export const BibleVerseHover: React.FC<BibleVerseHoverProps> = ({ reference, bib
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isHovered, setIsHovered] = useState(false);
-  const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0 });
+  const [popupPosition, setPopupPosition] = useState<{ top: number; left: number } | null>(null);
   const containerRef = useRef<HTMLSpanElement>(null);
   const triggerRef = useRef<HTMLSpanElement>(null);
+  const [showPopup, setShowPopup] = useState(false);
+
+  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleMouseEnter = () => {
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    setIsHovered(true);
+  };
+
+  const handleMouseLeave = () => {
+    hoverTimeoutRef.current = setTimeout(() => {
+      setIsHovered(false);
+    }, 200);
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -21,6 +36,7 @@ export const BibleVerseHover: React.FC<BibleVerseHoverProps> = ({ reference, bib
     const fetchVerse = async () => {
       if (!reference || !isHovered) return;
       
+      setShowPopup(true);
       setIsLoading(true);
       setError(null);
       
@@ -49,92 +65,120 @@ export const BibleVerseHover: React.FC<BibleVerseHoverProps> = ({ reference, bib
 
     if (isHovered) {
       fetchVerse();
+    } else {
+      setVerseContent(null);
+      setError(null);
+      setIsLoading(false);
+      setShowPopup(false);
+      setPopupPosition(null);
     }
 
     return () => {
       isMounted = false;
+      if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
     };
   }, [reference, isHovered, bibleId]);
 
-  // Update popup position when hovered
   useEffect(() => {
-    if (isHovered && triggerRef.current && containerRef.current) {
-      // Ensure the container is the offset parent (or find the correct one if needed)
-      // This assumes containerRef.current *is* the offsetParent due to position: relative
+    if (isHovered && triggerRef.current) {
+      console.log("--- BibleVerseHover Popup Positioning (Portal) ---");
       const triggerEl = triggerRef.current;
-      const containerEl = containerRef.current;
+      const triggerRect = triggerEl.getBoundingClientRect();
+      
+      const viewportWidth = window.innerWidth;
+      const viewportPadding = 10;
+      
+      const estimatedPopupWidth = Math.min(320, viewportWidth * 0.9);
+      
+      let finalTop = triggerRect.bottom + window.scrollY + 5;
+      let finalLeft = triggerRect.left + window.scrollX;
 
-      // Check if the container is indeed the offsetParent
-      if (triggerEl.offsetParent === containerEl) {
-        // Calculate position using offsetTop/Left relative to the offsetParent (container)
-        const top = triggerEl.offsetTop + triggerEl.offsetHeight; // Position below the trigger
-        const left = triggerEl.offsetLeft; // Align left edges
+      console.log(`Viewport Width: ${viewportWidth}`);
+      console.log(`Trigger Rect Top: ${triggerRect.top.toFixed(2)}, Bottom: ${triggerRect.bottom.toFixed(2)}, Left: ${triggerRect.left.toFixed(2)}`);
+      console.log(`Scroll Y: ${window.scrollY.toFixed(2)}, Scroll X: ${window.scrollX.toFixed(2)}`);
+      console.log(`Initial Top (Viewport): ${finalTop.toFixed(2)}`);
+      console.log(`Initial Left (Viewport): ${finalLeft.toFixed(2)}`);
+      console.log(`Estimated Popup Width: ${estimatedPopupWidth.toFixed(2)}`);
 
-        // NO VIEWPORT ADJUSTMENTS for now
-        setPopupPosition({ top, left });
-      } else {
-         // Fallback or error handling if offsetParent isn't the container
-         // This might happen with complex layouts, but shouldn't here.
-         // Use previous simple calculation as a basic fallback.
-         console.warn("BibleVerseHover: trigger's offsetParent is not the container span. Check CSS/Layout.");
-         const triggerRect = triggerEl.getBoundingClientRect();
-         const containerRect = containerEl.getBoundingClientRect();
-         const top = triggerRect.bottom - containerRect.top;
-         const left = triggerRect.left - containerRect.left;
-         setPopupPosition({ top, left });
+      let popupLeftViewport = finalLeft - window.scrollX;
+      let popupRightViewport = popupLeftViewport + estimatedPopupWidth;
+
+      console.log(`Initial Popup Left Edge (Viewport): ${popupLeftViewport.toFixed(2)}`);
+      console.log(`Initial Popup Right Edge (Viewport): ${popupRightViewport.toFixed(2)}`);
+      
+      if (popupRightViewport > viewportWidth - viewportPadding) {
+        const overflowRight = popupRightViewport - (viewportWidth - viewportPadding);
+        const newLeftViewport = popupLeftViewport - overflowRight;
+        finalLeft = newLeftViewport + window.scrollX;
+        console.log(`Right overflow (${overflowRight.toFixed(2)}px): Adjusting finalLeft to ${finalLeft.toFixed(2)}`);
+        popupLeftViewport = newLeftViewport; 
       }
 
+      if (popupLeftViewport < viewportPadding) {
+        const overflowLeft = viewportPadding - popupLeftViewport;
+        const newLeftViewport = popupLeftViewport + overflowLeft;
+        finalLeft = newLeftViewport + window.scrollX;
+        console.log(`Left overflow (${overflowLeft.toFixed(2)}px): Adjusting finalLeft to ${finalLeft.toFixed(2)}`);
+      }
+      
+      console.log(`Final Top (Absolute): ${finalTop.toFixed(2)}`);
+      console.log(`Final Left (Absolute): ${finalLeft.toFixed(2)}`);
+      console.log("---------------------------------------------");
+      
+      setPopupPosition({ top: finalTop, left: finalLeft });
+
     } else {
-      // Reset position when not hovered or refs aren't ready
-      setPopupPosition({ top: 0, left: 0 });
+      setPopupPosition(null);
     }
   }, [isHovered]);
+
+  const popupContent = showPopup && popupPosition ? (
+    <div 
+      onMouseEnter={handleMouseEnter} 
+      onMouseLeave={handleMouseLeave}
+      className={`fixed z-[1000] w-80 max-w-[90vw] max-h-96 overflow-y-auto p-3 bg-white border rounded-lg shadow-lg transition-opacity duration-200 ease-in-out ${
+        isHovered && (isLoading || error || verseContent) ? 'opacity-100 visible' : 'opacity-0 invisible'
+      }`}
+      style={{ 
+        top: `${popupPosition.top}px`, 
+        left: `${popupPosition.left}px`,
+      }}
+    >
+      {isLoading && (
+        <div className="text-sm text-gray-500 flex items-center space-x-2">
+          <svg className="animate-spin h-4 w-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <span>Loading verse...</span>
+        </div>
+      )}
+      
+      {error && (
+        <div className="text-sm text-red-500">{error}</div>
+      )}
+      
+      {verseContent && (
+        <div className="text-sm leading-relaxed whitespace-pre-wrap">{verseContent}</div>
+      )}
+    </div>
+  ) : null;
 
   return (
     <span 
       ref={containerRef}
-      className="inline-block relative"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => {
-        setIsHovered(false);
-        setVerseContent(null);
-        setError(null);
-      }}
+      className="inline-block"
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
       <span 
         ref={triggerRef}
-        className="px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded-md cursor-pointer hover:bg-blue-200 transition-colors"
+        className="px-1 py-0 bg-blue-100 text-blue-800 rounded-md cursor-pointer hover:bg-blue-200 transition-colors"
       >
         {reference}
       </span>
       
-      <div 
-        className={`absolute z-[100] w-80 max-h-96 overflow-y-auto p-3 bg-white border rounded-lg shadow-lg transition-all duration-200 ease-in-out ${
-          isHovered ? 'opacity-100 visible' : 'opacity-0 invisible'
-        }`}
-        style={{ 
-          top: `${popupPosition.top}px`, 
-          left: `${popupPosition.left}px` 
-        }}
-      >
-        {isLoading && (
-          <div className="text-sm text-gray-500 flex items-center space-x-2">
-            <svg className="animate-spin h-4 w-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            <span>Loading verse...</span>
-          </div>
-        )}
-        
-        {error && (
-          <div className="text-sm text-red-500">{error}</div>
-        )}
-        
-        {verseContent && (
-          <div className="text-sm leading-relaxed whitespace-pre-wrap">{verseContent}</div>
-        )}
-      </div>
+      {popupContent && createPortal(popupContent, document.body)}
     </span>
   );
 }; 

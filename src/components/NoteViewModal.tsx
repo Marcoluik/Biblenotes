@@ -1,4 +1,6 @@
 import React from 'react';
+// Keep ReactMarkdown import commented out for now
+// import ReactMarkdown from 'react-markdown'; 
 import { Note } from '../types';
 import { BibleVerseHover } from './BibleVerseHover';
 
@@ -9,51 +11,53 @@ interface NoteViewModalProps {
 }
 
 export const NoteViewModal: React.FC<NoteViewModalProps> = ({ note, onClose, bibleId }) => {
-  // Function to render content with Bible verse references
-  const renderContent = () => {
-    const lines = note.content.split('\n');
-    return lines.map((line, index) => {
-      // Check if the line contains a Bible verse reference
-      const verseMatch = line.match(/\[(.*?)\]/);
-      if (verseMatch) {
-        // If the line is just the verse reference, render it as a standalone component
-        if (line.trim() === `[${verseMatch[1]}]`) {
-          return (
-            <div key={index} className="mb-4">
-              <BibleVerseHover reference={verseMatch[1]} bibleId={bibleId} />
-            </div>
-          );
-        } else {
-          // If the verse reference is inline with other text, split the line and render each part
-          const parts = line.split(/(\[.*?\])/);
-          return (
-            <div key={index} className="mb-4">
-              {parts.map((part, partIndex) => {
-                const innerVerseMatch = part.match(/\[(.*?)\]/);
-                if (innerVerseMatch) {
+
+  const renderContentWithStructure = () => {
+    const paragraphs = note.content.trim().split(/\n\s*\n/);
+
+    return paragraphs.map((paragraph, paraIndex) => {
+      if (!paragraph.trim()) {
+        return <p key={`para-${paraIndex}`}></p>; // Represent blank lines between paragraphs
+      }
+
+      // Split paragraph into lines based on single newlines
+      const lines = paragraph.split('\n');
+
+      return (
+        <p key={`para-${paraIndex}`}>
+          {lines.map((line, lineIndex) => (
+            // Use React.Fragment to group line content + potential break tag
+            <React.Fragment key={`line-${lineIndex}`}>
+              {line.split(/(\[.*?\])/g).filter(part => part).map((part, partIndex) => {
+                const verseMatch = part.match(/\[(.*?)\]/);
+                if (verseMatch) {
+                  // Render verse component (inline)
                   return (
                     <BibleVerseHover 
-                      key={`${index}-${partIndex}`} 
-                      reference={innerVerseMatch[1]} 
+                      key={`part-${partIndex}`}
+                      reference={verseMatch[1]} 
                       bibleId={bibleId} 
                     />
                   );
+                } else {
+                  // Render text part as simple span (no markdown)
+                  return <span key={`part-${partIndex}`}>{part}</span>;
                 }
-                return <span key={`${index}-${partIndex}`}>{part}</span>;
               })}
-            </div>
-          );
-        }
-      }
-      return <div key={index} className="mb-4">{line}</div>;
+              {/* Add <br /> if it's not the last line within the paragraph */}
+              {lineIndex < lines.length - 1 && <br />}
+            </React.Fragment>
+          ))}
+        </p>
+      );
     });
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
+      <div className="bg-white rounded-lg overflow-hidden shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col my-8">
         {/* Header */}
-        <div className="flex justify-between items-center p-4 border-b">
+        <div className="flex justify-between items-center p-4 border-b sticky top-0 bg-white z-10">
           <h2 className="text-xl font-bold text-gray-800">{note.title}</h2>
           <button
             onClick={onClose}
@@ -66,15 +70,15 @@ export const NoteViewModal: React.FC<NoteViewModalProps> = ({ note, onClose, bib
           </button>
         </div>
         
-        {/* Content */}
-        <div className="p-4 overflow-y-auto flex-grow">
-          <div className="prose max-w-none">
-            {renderContent()}
+        {/* Content - Temporarily removed prose class */}
+        <div className="p-6 overflow-y-auto flex-grow">
+          <div> {/* Removed prose class */} 
+            {renderContentWithStructure()}
           </div>
         </div>
         
         {/* Footer */}
-        <div className="p-4 border-t flex justify-between items-center text-sm text-gray-500">
+        <div className="p-4 border-t flex justify-between items-center text-sm text-gray-500 sticky bottom-0 bg-white z-10">
           <div>
             {note.category && (
               <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full mr-2">
@@ -95,4 +99,4 @@ export const NoteViewModal: React.FC<NoteViewModalProps> = ({ note, onClose, bib
       </div>
     </div>
   );
-}; 
+};
