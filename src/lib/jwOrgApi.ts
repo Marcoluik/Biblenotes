@@ -24,7 +24,7 @@ export async function fetchVerseFromJwOrg(reference: string, bibleId: string = '
         ref: reference, // Pass reference
         lang: lang      // Pass extracted language code
       },
-      timeout: 15000 
+      timeout: 30000 
     });
 
     if (response.status === 200 && response.data?.text) {
