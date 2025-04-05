@@ -8,10 +8,22 @@ import { Note } from './types';
 import { DailyVerse } from './components/DailyVerse';
 import { InlineBibleVerseSelector } from './components/InlineBibleVerseSelector';
 
+// Define Profile type 
+interface Profile {
+  id: string;
+  updated_at?: string;
+  username?: string;
+  full_name?: string;
+  avatar_url?: string;
+  website?: string;
+  preferred_bible_id?: string | null;
+}
+
 function App() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [error, setError] = useState<string | null>(null);
   
   const [newNoteTitle, setNewNoteTitle] = useState('');
@@ -37,49 +49,203 @@ function App() {
   const [sharedNotes, setSharedNotes] = useState<Note[]>([]);
   const [activeTab, setActiveTab] = useState<'my-notes' | 'shared-notes'>('my-notes');
 
-  // Manually define the NWT Study Bible entry
-  const nwtStudyBibleEntry = {
-    id: 'nwtsty-en', // Unique ID for our custom fetcher
-    name: 'New World Translation (Study Bible) - English',
-    language: { id: 'eng', name: 'English' },
-    // Note: No actual API ID needed, our code handles this one specially
-  };
-
   useEffect(() => {
-    // Check for existing session
-    const checkSession = async () => {
+    let isMounted = true; 
+    console.log("[Initial Effect] Mounting...");
+
+    // Function to fetch profile OR CREATE if missing
+    const fetchOrCreateProfile = async (userId: string, userEmail?: string): Promise<Profile | null> => {
+      console.log('[fetchOrCreateProfile] Fetching profile for user:', userId);
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          setUser(session.user);
-          fetchNotes(session.user.id);
+        let { data, error, status } = await supabase
+          .from('profiles')
+          .select(`*`)
+          .eq('id', userId)
+          .single();
+
+        // Handle specific error: Row not found (406), means we need to create it
+        if (error && status === 406) {
+          console.log('[fetchOrCreateProfile] Profile not found, attempting to create...');
+          // Attempt to create a new profile
+          const { data: newProfileData, error: insertError } = await supabase
+            .from('profiles')
+            .insert({ 
+              id: userId, 
+              // Use email as a fallback username if needed, adjust as necessary
+              username: userEmail || `user_${userId.substring(0, 8)}`, 
+              updated_at: new Date().toISOString(),
+              preferred_bible_id: null // Initialize pref to null
+            })
+            .select()
+            .single();
+          
+          if (insertError) {
+            console.error('[fetchOrCreateProfile] Error inserting new profile:', insertError);
+            return null;
+          } else {
+            console.log('[fetchOrCreateProfile] Successfully created profile:', newProfileData);
+            return newProfileData as Profile;
+          }
+        } else if (error) {
+          // Other unexpected error during select
+          console.error('[fetchOrCreateProfile] Error fetching profile (non-406):', error);
+          return null; 
         } else {
-          setIsLoading(false);
+           // Profile found successfully
+           console.log('[fetchOrCreateProfile] Profile data fetched:', data);
+           return data as Profile;
         }
-      } catch (error: any) {
-        setError(error.message);
-        setIsLoading(false);
+
+      } catch (error) {
+        console.error('[fetchOrCreateProfile] Unexpected error:', error);
+        return null;
       }
     };
 
-    checkSession();
+    // Fetch notes (keep existing separate function for now)
+    const fetchNotesData = fetchNotes; // Assuming fetchNotes exists from previous state
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        if (session) {
+    // Check for existing session and load data
+    const checkSessionAndLoad = async () => {
+      console.log("[checkSessionAndLoad] Starting...");
+      setIsLoading(true);
+      try {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) throw sessionError;
+
+        if (session?.user && isMounted) {
+          const currentUserId = session.user.id;
+          console.log(`[checkSessionAndLoad] Session found for user ID: ${currentUserId}, Email: ${session.user.email}`);
+          // Log state *before* setting it
+          console.log("[checkSessionAndLoad] Current user state (before set):", user);
           setUser(session.user);
-          fetchNotes(session.user.id);
+          // Log state *after* setting it
+          console.log("[checkSessionAndLoad] User state *intended* to be set to:", session.user);
+          
+          console.log(`[checkSessionAndLoad] Calling fetchOrCreateProfile with ID: ${currentUserId}`);
+          console.log(`[checkSessionAndLoad] Calling fetchNotesData with ID: ${currentUserId}`);
+          const [profileData] = await Promise.all([
+            fetchOrCreateProfile(currentUserId, session.user.email),
+            fetchNotesData(currentUserId)
+          ]);
+          
+          if (!isMounted) {
+              console.log("[checkSessionAndLoad] Unmounted after fetches.");
+              return; 
+          }
+          console.log("[checkSessionAndLoad] Fetches complete. Profile data:", !!profileData);
+          if (profileData) {
+              console.log("[checkSessionAndLoad] Setting profile state.");
+              setProfile(profileData);
+          } else {
+              console.warn("[checkSessionAndLoad] Profile fetch/create returned null.");
+              // If profile is essential, maybe stop loading here with an error?
+              // setError("Failed to load user profile.");
+              // setIsLoading(false); 
+          }
+          // If profile fetch/create is successful, loading will be stopped by the *other* effect
+          
         } else {
+          console.log("[checkSessionAndLoad] No active session found.");
+          if (isMounted) {
+              setUser(null);
+              // No user, no profile/bibles needed, stop loading
+              setIsLoading(false); 
+          }
+        }
+      } catch (error: any) {
+        console.error("[checkSessionAndLoad] Error:", error);
+        if (isMounted) {
+             setError(error.message);
+             // Stop loading on error
+             setIsLoading(false); 
+        }
+      } 
+      console.log("[checkSessionAndLoad] Finished.");
+    };
+
+    checkSessionAndLoad();
+
+    // Auth change listener - SIMPLIFIED STATE UPDATES
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => { // Removed async here
+        if (!isMounted) return;
+        console.log("[Simplified Auth Listener] Auth state changed. Session:", !!session);
+
+        if (session?.user) {
+          // 1. Set user state IMMEDIATELY
+          console.log("[Simplified Auth Listener] Setting user state:", session.user);
+          setUser(session.user);
+          // 2. Trigger fetches but DON'T await them here
+          console.log("[Simplified Auth Listener] Triggering profile/notes fetch for user:", session.user.id);
+          fetchOrCreateProfile(session.user.id, session.user.email)
+             .then(profileData => {
+                 if (isMounted && profileData) {
+                    console.log("[Simplified Auth Listener] Profile fetch complete, setting profile state.");
+                    setProfile(profileData);
+                 } else if (isMounted) {
+                    console.warn("[Simplified Auth Listener] Profile fetch/create returned null/empty after auth change.");
+                 }
+             })
+             .catch(err => console.error("[Simplified Auth Listener] Error fetching profile after auth change:", err));
+             
+          fetchNotesData(session.user.id);
+             // Assuming fetchNotesData updates state internally
+             // .catch(err => console.error("[Simplified Auth Listener] Error fetching notes after auth change:", err));
+          
+          // isLoading state is managed by the Bible effect now
+
+        } else { // Logout
+          console.log("[Simplified Auth Listener] Logout detected, clearing state.");
           setUser(null);
+          setProfile(null);
           setNotes([]);
-          setIsLoading(false);
+          setSharedNotes([]);
+          setCategories([]);
+          setSelectedBibleId(''); 
+          setIsLoading(false); 
         }
       }
     );
 
-    // Fetch available Bibles from the official API
-    const fetchBibles = async () => {
+    return () => {
+      console.log("[Initial Effect] Unmounting...");
+      isMounted = false;
+      if (subscription) subscription.unsubscribe();
+    };
+  }, []); // End initial load effect
+
+  // Separate useEffect for fetching Bibles and setting default,
+  // depends on user and profile state being ready.
+  useEffect(() => {
+    console.log(`[Bible Effect] Running. User State ID: ${user?.id}, Profile State ID: ${profile?.id}`);
+    
+    if (!user || !profile) { 
+        // Add extra check: Are IDs mismatched even if both exist?
+        if(user && profile && user.id !== profile.id) {
+            console.warn(`[Bible Effect] User ID (${user.id}) and Profile ID (${profile.id}) mismatch! Skipping.`);
+            // Potentially reset profile state or trigger a reload?
+            // setProfile(null); // Example: Force profile refetch on next run
+            return; 
+        }
+        console.log("[Bible Effect] User or Profile not ready, skipping.");
+        return; 
+    } 
+    console.log(`[Bible Effect] User and profile ready (User: ${user.id}). Proceeding...`);
+
+    // Manually define NWT entries
+    const nwtStudyBibleEntryEn = {
+      id: 'nwtsty-en', 
+      name: 'New World Translation (Study Bible) - English',
+      language: { id: 'eng', name: 'English' },
+    };
+    const nwtStudyBibleEntryDa = {
+      id: 'nwtsty-da',
+      name: 'New World Translation (Study Bible) - Danish',
+      language: { id: 'dan', name: 'Danish' },
+    };
+
+    const fetchBiblesAndSetDefault = async () => {
       let fetchedBibles: { id: string; name: string; language: { id: string; name: string } }[] = [];
       try {
         fetchedBibles = await getAvailableBibles();
@@ -89,76 +255,88 @@ function App() {
       }
 
       const combinedBibles = [
-        nwtStudyBibleEntry,
-        ...fetchedBibles.filter(b => b.id !== nwtStudyBibleEntry.id && b.name !== nwtStudyBibleEntry.name)
+        nwtStudyBibleEntryEn, 
+        nwtStudyBibleEntryDa,
+        ...fetchedBibles.filter(b => 
+            b.id !== nwtStudyBibleEntryEn.id && 
+            b.name !== nwtStudyBibleEntryEn.name &&
+            b.id !== nwtStudyBibleEntryDa.id && 
+            b.name !== nwtStudyBibleEntryDa.name
+        )
       ];
       combinedBibles.sort((a, b) => a.name.localeCompare(b.name));
-
-      console.log("Combined Bibles list (before setting state):", JSON.stringify(combinedBibles, null, 2));
-
+      
+      // Only update state if list is different?
+      // Could compare stringified versions if performance is ever an issue
       setAvailableBibles(combinedBibles);
       setFilteredBibles(combinedBibles);
 
-      // Set default selection logic
-      // Prioritize NWT if available, then KJV, then ESV, then first in list
+      // --- Default Selection Logic --- 
       let defaultBibleId = '';
-      if (combinedBibles.some(b => b.id === nwtStudyBibleEntry.id)) {
-        defaultBibleId = nwtStudyBibleEntry.id;
-      } else {
-          const kjvBible = combinedBibles.find(bible => 
-            bible.id === 'de4e12af7f28f599-02' || // KJV ID
+      // Use profile state here
+      const userPreferredId = profile?.preferred_bible_id; 
+      console.log("Setting default Bible. User Preferred ID:", userPreferredId);
+      
+      if (userPreferredId && combinedBibles.some(b => b.id === userPreferredId)) {
+        defaultBibleId = userPreferredId;
+        console.log(`Using user preferred Bible ID: ${defaultBibleId}`);
+      } else { 
+        console.log("No valid user preference found, applying default logic...");
+        const nwtEn = combinedBibles.find(b => b.id === nwtStudyBibleEntryEn.id);
+        const nwtDa = combinedBibles.find(b => b.id === nwtStudyBibleEntryDa.id);
+        const kjvBible = combinedBibles.find(bible => 
+            bible.id === 'de4e12af7f28f599-02' || 
             bible.name.toLowerCase().includes('king james version') || 
             bible.name.toLowerCase().includes('kjv')
-          );
-          if (kjvBible) {
-            defaultBibleId = kjvBible.id;
-          } else {
-              const esvBible = combinedBibles.find(bible => 
-                bible.id === '9879dbb7cfe39e4d-01' || // ESV ID
-                bible.name.toLowerCase().includes('english standard version') || 
-                bible.name.toLowerCase().includes('esv')
-              );
-              if (esvBible) {
-                defaultBibleId = esvBible.id;
-              } else if (combinedBibles.length > 0) {
-                  // Fallback to the first available bible if others aren't found
-                  defaultBibleId = combinedBibles[0].id;
-              }
-          }
+        );
+        const esvBible = combinedBibles.find(bible => 
+            bible.id === '9879dbb7cfe39e4d-01' || 
+            bible.name.toLowerCase().includes('english standard version') || 
+            bible.name.toLowerCase().includes('esv')
+        );
+
+        // Apply default order
+        if (nwtEn) defaultBibleId = nwtEn.id;
+        else if (nwtDa) defaultBibleId = nwtDa.id;
+        else if (kjvBible) defaultBibleId = kjvBible.id;
+        else if (esvBible) defaultBibleId = esvBible.id;
+        else if (combinedBibles.length > 0) defaultBibleId = combinedBibles[0].id;
+        
+        console.log(`Applied default Bible ID: ${defaultBibleId}`);
       }
 
       if (defaultBibleId) {
-        console.log(`Setting default Bible ID to: ${defaultBibleId}`);
         setSelectedBibleId(defaultBibleId);
       } else {
-          console.warn("Could not determine a default Bible ID.");
-          // Handle case where no bibles are available at all?
+          console.warn("Could not determine a default or preferred Bible ID.");
       }
+      // Ensure loading stops after bibles are processed
+      setIsLoading(false); 
     };
     
-    fetchBibles();
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
+    fetchBiblesAndSetDefault();
+    
+  }, [user, profile]); // Correct dependencies: Run when user or profile becomes available
 
   // Filter Bibles when search term changes
   useEffect(() => {
-    console.log('Filtering Bibles based on search term:', bibleSearchTerm);
-    console.log('Filtering from availableBibles:', JSON.stringify(availableBibles, null, 2));
+    console.log('Bible search term changed:', bibleSearchTerm);
+    console.log('Available Bibles:', availableBibles);
+
     if (!bibleSearchTerm.trim()) {
-      console.log('Empty search term, showing all availableBibles');
+      console.log('Empty search term, showing all Bibles');
       setFilteredBibles(availableBibles);
       return;
     }
+
     const searchTerm = bibleSearchTerm.toLowerCase();
     const filtered = availableBibles.filter(bible => {
       const nameMatch = bible.name.toLowerCase().includes(searchTerm);
       const languageMatch = bible.language.name.toLowerCase().includes(searchTerm);
       return nameMatch || languageMatch;
     });
-    console.log('Filtered Bibles result:', JSON.stringify(filtered, null, 2));
+
+    console.log('Filtered Bibles:', filtered);
     setFilteredBibles(filtered);
   }, [bibleSearchTerm, availableBibles]);
 
@@ -352,25 +530,34 @@ function App() {
   };
 
   const handleSignOut = async () => {
+    console.log("handleSignOut called");
     try {
-      // Use the Supabase client's signOut method
+      console.log("Attempting Supabase sign out...");
       const { error } = await supabase.auth.signOut();
-      
+      console.log("Supabase signOut call completed."); // Log regardless of error
+
       if (error) {
-        console.error('Error signing out:', error);
-        // If there's an error, still sign out locally
+        console.error('Error signing out (Supabase error):', error);
+        setError(`Sign out failed: ${error.message}`);
+      } else {
+        console.log("Sign out successful (Supabase call reported no error).");
+        // **Manually clear state here** as a fallback / immediate UI update,
+        // even though the auth listener *should* handle it.
         setUser(null);
+        setProfile(null);
         setNotes([]);
-        return;
+        setSharedNotes([]);
+        setCategories([]);
+        setSelectedBibleId(''); // Reset bible selection
+        // No need to setIsLoading here, the Auth component will render
       }
-      
-      // The auth state change listener will handle setting user to null
-      // and clearing notes if signOut is successful
     } catch (error: any) {
-      console.error('Error signing out:', error);
-      // Still set user to null to allow the app to continue
+      // Catch errors in the sign out process itself
+      console.error('Unexpected error during handleSignOut:', error);
+      setError(`Sign out failed: ${error.message}`);
+      // Attempt to clear state even on unexpected error
       setUser(null);
-      setNotes([]);
+      setProfile(null);
     }
   };
 
@@ -516,6 +703,43 @@ function App() {
     };
   }, [user]);
 
+  // Function to handle Bible selection AND save preference
+  const handleBibleSelect = async (bibleId: string) => {
+    console.log('Bible selected:', bibleId);
+    // Optimistically update UI state
+    setSelectedBibleId(bibleId);
+    setShowBibleModal(false);
+
+    // Save preference to profile if user is logged in
+    if (user && profile) {
+      // Only save if the selection is different from the current preference
+      if (profile.preferred_bible_id !== bibleId) { 
+        try {
+          console.log(`Saving preferred_bible_id: ${bibleId} for user: ${user.id}`);
+          const { error: updateError } = await supabase
+            .from('profiles')
+            .update({ preferred_bible_id: bibleId })
+            .eq('id', user.id);
+
+          if (updateError) {
+            throw updateError;
+          }
+          console.log('Successfully saved bible preference.');
+          // Update local profile state to match DB
+          setProfile(prev => prev ? { ...prev, preferred_bible_id: bibleId } : null);
+        } catch (error) {
+          console.error('Error saving bible preference:', error);
+          // Optionally notify user of save failure
+          setError('Could not save your Bible preference.');
+        }
+      } else {
+          console.log('Selected Bible is already the saved preference.');
+      }
+    } else {
+        console.log('User or profile not available, skipping save.');
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-screen">
@@ -566,9 +790,9 @@ function App() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
               </button>
-              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 ease-in-out border border-gray-200">
+              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 ease-in-out border border-gray-200 z-[1001]">
                 <div className="px-4 py-2 text-sm text-gray-700 border-b border-gray-200">
-                  {user.email}
+                  {user?.email ?? 'Loading...'}
                 </div>
                 <button
                   onClick={handleSignOut}
@@ -623,10 +847,7 @@ function App() {
                   filteredBibles.map(bible => (
                     <button
                       key={bible.id}
-                      onClick={() => {
-                        setSelectedBibleId(bible.id);
-                        setShowBibleModal(false);
-                      }}
+                      onClick={() => handleBibleSelect(bible.id)}
                       className={`w-full text-left px-4 py-2 hover:bg-gray-100 ${
                         bible.id === selectedBibleId ? 'bg-blue-50 font-semibold' : ''
                       }`}

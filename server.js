@@ -158,11 +158,16 @@ app.use((req, res, next) => {
 // --- START: NEW JW.ORG Proxy Route ---
 app.get('/nwt-verse', async (req, res) => {
   const reference = req.query.ref;
+  const lang = (req.query.lang || 'en');
+
   if (!reference) {
     return res.status(400).json({ error: 'Missing ref query parameter' });
   }
+  if (!['en', 'da'].includes(lang)) { // Basic validation for supported languages
+    return res.status(400).json({ error: `Unsupported language code: ${lang}` });
+  }
 
-  console.log(`[JW.ORG] Received request for: ${reference}`);
+  console.log(`[JW.ORG] Received request for: ${reference} (lang: ${lang})`);
   const parsedRef = parseReference(reference);
   if (!parsedRef) {
     return res.status(400).json({ error: `Could not parse reference: ${reference}` });
@@ -171,7 +176,6 @@ app.get('/nwt-verse', async (req, res) => {
   // Currently only handles single verse fetch
   if (parsedRef.endVerse && parsedRef.endVerse !== parsedRef.startVerse) {
       console.warn(`[JW.ORG] Fetcher currently only supports single verses, not ranges like ${reference}. Fetching only ${parsedRef.startVerse}.`);
-      // Potentially loop here in future to fetch multiple verses if needed
   }
   const verseNum = parsedRef.startVerse;
 
@@ -182,7 +186,19 @@ app.get('/nwt-verse', async (req, res) => {
   }
 
   const verseId = createVerseId(bookNumber, parsedRef.chapter, verseNum);
-  const url = `https://www.jw.org/en/library/bible/study-bible/books/json/html/${verseId}`;
+  
+  // --- Construct URL based on language ---
+  let urlBasePath = '';
+  if (lang === 'da') {
+      // Use the Danish path segments. 
+      urlBasePath = `/da/bibliotek/bibelen/studiebibel/b%C3%B8ger/json/html/`;
+      console.log("[JW.ORG] Using Danish URL path."); // Add log
+  } else { // Default to English
+      urlBasePath = `/en/library/bible/study-bible/books/json/html/`;
+      console.log("[JW.ORG] Using English URL path."); // Add log
+  }
+  const url = `https://www.jw.org${urlBasePath}${verseId}`;
+  // --- End URL Construction ---
 
   try {
     console.log(`[JW.ORG] Fetching URL: ${url}`);
@@ -194,45 +210,46 @@ app.get('/nwt-verse', async (req, res) => {
         }
     });
 
-    console.log(`[JW.ORG] Response status for ${verseId}: ${response.status}`);
+    console.log(`[JW.ORG] Response status for ${verseId} (${lang}): ${response.status}`);
 
+    // JSON structure might differ slightly per language? Check if ranges[verseId] is reliable
     if (response.status === 200 && response.data?.ranges?.[verseId]) {
       const verseData = response.data.ranges[verseId];
       const htmlContent = verseData.verses?.[0]?.content ?? verseData.html;
       const cleanedText = parseVerseHtmlUsingCheerio(htmlContent);
       
       if (cleanedText) {
-        console.log(`[JW.ORG] Sending cleaned text for ${verseId}:`, cleanedText);
+        console.log(`[JW.ORG] Sending cleaned text for ${verseId} (${lang}):`, cleanedText);
         return res.json({ text: cleanedText });
       } else {
-          console.error(`[JW.ORG] Failed to parse HTML for ${verseId}`);
+          console.error(`[JW.ORG] Failed to parse HTML for ${verseId} (${lang})`);
           return res.status(500).json({ error: 'Failed to parse verse content' });
       }
     } else {
-      console.error(`[JW.ORG] Verse ${verseId} not found or invalid response:`, response.data);
-      return res.status(404).json({ error: `Verse not found or invalid response from source for ${reference}` });
+      console.error(`[JW.ORG] Verse ${verseId} (${lang}) not found or invalid response:`, response.data);
+      return res.status(404).json({ error: `Verse not found or invalid response from source for ${reference} (${lang})` });
     }
-  } catch (error) {
-    if (axios.isAxiosError(error)) {
-      console.error(`[JW.ORG] Axios error fetching verse ${verseId}: ${error.message}`);
-      if (error.response) {
-        console.error(`[JW.ORG] Response Status: ${error.response.status}`);
-        console.error(`[JW.ORG] Response Data:`, error.response.data);
-        // Send specific status if available, otherwise 502 (Bad Gateway)
-        return res.status(error.response.status || 502).json({ error: `Error fetching from source: ${error.message}` });
-      } else if (error.request) {
-           console.error('[JW.ORG] Request made but no response received (or Network Error)');
-           return res.status(504).json({ error: 'Gateway Timeout - No response from source' });
+  } catch (error) { 
+      // ... Error handling remains mostly the same, add lang to logs ...
+      if (axios.isAxiosError(error)) {
+        console.error(`[JW.ORG] Axios error fetching verse ${verseId} (${lang}): ${error.message}`);
+        if (error.response) {
+            console.error(`[JW.ORG] Response Status (${lang}): ${error.response.status}`);
+            console.error(`[JW.ORG] Response Data (${lang}):`, error.response.data);
+            return res.status(error.response.status || 502).json({ error: `Error fetching from source (${lang}): ${error.message}` });
+        } else if (error.request) {
+             console.error(`[JW.ORG] Request made but no response received (${lang})`);
+             return res.status(504).json({ error: `Gateway Timeout - No response from source (${lang})` });
+        } else {
+             console.error(`[JW.ORG] Error setting up Axios request (${lang}):`, error.message);
+             return res.status(500).json({ error: 'Internal server error setting up request' });
+        }
       } else {
-           console.error('[JW.ORG] Error setting up Axios request:', error.message);
-           return res.status(500).json({ error: 'Internal server error setting up request' });
+          console.error(`[JW.ORG] Unexpected error fetching verse ${verseId} (${lang}):`, error);
+          return res.status(500).json({ error: 'Unexpected internal server error' });
       }
-    } else {
-      console.error(`[JW.ORG] Unexpected error fetching verse ${verseId}:`, error);
-      return res.status(500).json({ error: 'Unexpected internal server error' });
-    }
   }
-  // Safety net: Ensure a response is always sent if code reaches here unexpectedly
+  // Safety net remains
   console.error("[JW.ORG] Reached end of /nwt-verse handler unexpectedly!"); 
   return res.status(500).json({ error: "Internal server error: Unhandled path in /nwt-verse" });
 });

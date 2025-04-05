@@ -45,8 +45,8 @@ export const BibleVerseHover: React.FC<BibleVerseHoverProps> = ({ reference, bib
       try {
         let fetchedContent: string | null = null;
         
-        if (bibleId === 'nwtsty-en') {
-          fetchedContent = await fetchVerseFromJwOrg(reference);
+        if (bibleId?.startsWith('nwtsty-')) {
+          fetchedContent = await fetchVerseFromJwOrg(reference, bibleId);
         } else {
           const verses = await searchBibleVerses(reference, bibleId);
           if (verses && verses.length > 0) {
