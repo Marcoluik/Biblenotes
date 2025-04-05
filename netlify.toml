@@ -6,6 +6,10 @@
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
+  included_files = ["netlify/functions/**/*"]
+
+[functions.nwt-proxy]
+  timeout = 30
 
 [[redirects]]
   from = "/*"

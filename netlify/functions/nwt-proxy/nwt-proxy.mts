@@ -65,6 +65,36 @@ function parseVerseHtmlUsingCheerio(html: string | undefined): string {
      return ''; // Return empty string on parsing error
    }
 }
+
+// Simple in-memory cache with TTL
+interface CacheEntry {
+  text: string;
+  timestamp: number;
+}
+
+const verseCache: Record<string, CacheEntry> = {};
+const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+
+function getCachedVerse(cacheKey: string): string | null {
+  const entry = verseCache[cacheKey];
+  if (!entry) return null;
+  
+  // Check if cache entry is expired
+  if (Date.now() - entry.timestamp > CACHE_TTL) {
+    delete verseCache[cacheKey];
+    return null;
+  }
+  
+  return entry.text;
+}
+
+function cacheVerse(cacheKey: string, text: string): void {
+  verseCache[cacheKey] = {
+    text,
+    timestamp: Date.now()
+  };
+}
+
 // --- End Helpers ---
 
 
@@ -98,6 +128,18 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
   }
   
   const verseId = createVerseId(bookNumber, parsedRef.chapter, verseNum);
+  const cacheKey = `${verseId}-${lang}`;
+  
+  // Check cache first
+  const cachedText = getCachedVerse(cacheKey);
+  if (cachedText) {
+    console.log(`[NWT Proxy Fn] Cache hit for ${verseId} (${lang})`);
+    return {
+      statusCode: 200,
+      headers: { 'Access-Control-Allow-Origin': '*' },
+      body: JSON.stringify({ text: cachedText, cached: true }),
+    };
+  }
   
   // --- Construct URL ---
   let urlBasePath = '';
@@ -112,7 +154,7 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
   try {
     console.log(`[NWT Proxy Fn] Fetching URL: ${url}`);
     const response = await axios.get(url, {
-        timeout: 10000, // 10 seconds
+        timeout: 15000, // 15 seconds (increased from 10)
         headers: { 
             'Accept': 'application/json, text/plain, */*',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' 
@@ -129,6 +171,9 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
         const cleanedText = parseVerseHtmlUsingCheerio(htmlContent);
         
         if (cleanedText) {
+             // Cache the result
+             cacheVerse(cacheKey, cleanedText);
+             
              // Return Netlify Function success response
              return {
                  statusCode: 200,
@@ -147,6 +192,19 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
 
   } catch (error: any) {
       console.error(`[NWT Proxy Fn] Error fetching verse ${verseId} (${lang}):`, error);
+      
+      // Handle timeout specifically
+      if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+        return {
+          statusCode: 504, // Gateway Timeout
+          headers: { 'Access-Control-Allow-Origin': '*' },
+          body: JSON.stringify({ 
+            error: `Request timed out while fetching from source (${lang}). Please try again later.`,
+            timeout: true
+          }),
+        };
+      }
+      
       const statusCode = error.response?.status || 502; // 502 Bad Gateway is a common proxy error status
       const message = error.message || 'Unknown server error';
       // Return Netlify Function error response
