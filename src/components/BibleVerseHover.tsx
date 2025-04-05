@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { searchBibleVerses } from '../lib/bibleApi';
+import { fetchVerseFromJwOrg } from '../lib/jwOrgApi';
 
 interface BibleVerseHoverProps {
   reference: string;
@@ -39,16 +40,25 @@ export const BibleVerseHover: React.FC<BibleVerseHoverProps> = ({ reference, bib
       setShowPopup(true);
       setIsLoading(true);
       setError(null);
+      setVerseContent(null);
       
       try {
-        const verses = await searchBibleVerses(reference, bibleId);
+        let fetchedContent: string | null = null;
+        
+        if (bibleId === 'nwtsty-en') {
+          fetchedContent = await fetchVerseFromJwOrg(reference);
+        } else {
+          const verses = await searchBibleVerses(reference, bibleId);
+          if (verses && verses.length > 0) {
+            fetchedContent = verses[0].content || verses[0].text || '';
+          }
+        }
         
         if (isMounted) {
-          if (verses && verses.length > 0) {
-            const cleanedContent = verses[0].content || verses[0].text || '';
-            setVerseContent(cleanedContent);
+          if (fetchedContent !== null && fetchedContent.trim() !== '') {
+            setVerseContent(fetchedContent);
           } else {
-            setError('Verse not found');
+            setError('Verse not found or failed to load');
           }
         }
       } catch (err) {
@@ -81,7 +91,6 @@ export const BibleVerseHover: React.FC<BibleVerseHoverProps> = ({ reference, bib
 
   useEffect(() => {
     if (isHovered && triggerRef.current) {
-      console.log("--- BibleVerseHover Popup Positioning (Portal) ---");
       const triggerEl = triggerRef.current;
       const triggerRect = triggerEl.getBoundingClientRect();
       
@@ -93,24 +102,13 @@ export const BibleVerseHover: React.FC<BibleVerseHoverProps> = ({ reference, bib
       let finalTop = triggerRect.bottom + window.scrollY + 5;
       let finalLeft = triggerRect.left + window.scrollX;
 
-      console.log(`Viewport Width: ${viewportWidth}`);
-      console.log(`Trigger Rect Top: ${triggerRect.top.toFixed(2)}, Bottom: ${triggerRect.bottom.toFixed(2)}, Left: ${triggerRect.left.toFixed(2)}`);
-      console.log(`Scroll Y: ${window.scrollY.toFixed(2)}, Scroll X: ${window.scrollX.toFixed(2)}`);
-      console.log(`Initial Top (Viewport): ${finalTop.toFixed(2)}`);
-      console.log(`Initial Left (Viewport): ${finalLeft.toFixed(2)}`);
-      console.log(`Estimated Popup Width: ${estimatedPopupWidth.toFixed(2)}`);
-
       let popupLeftViewport = finalLeft - window.scrollX;
       let popupRightViewport = popupLeftViewport + estimatedPopupWidth;
 
-      console.log(`Initial Popup Left Edge (Viewport): ${popupLeftViewport.toFixed(2)}`);
-      console.log(`Initial Popup Right Edge (Viewport): ${popupRightViewport.toFixed(2)}`);
-      
       if (popupRightViewport > viewportWidth - viewportPadding) {
         const overflowRight = popupRightViewport - (viewportWidth - viewportPadding);
         const newLeftViewport = popupLeftViewport - overflowRight;
         finalLeft = newLeftViewport + window.scrollX;
-        console.log(`Right overflow (${overflowRight.toFixed(2)}px): Adjusting finalLeft to ${finalLeft.toFixed(2)}`);
         popupLeftViewport = newLeftViewport; 
       }
 
@@ -118,12 +116,7 @@ export const BibleVerseHover: React.FC<BibleVerseHoverProps> = ({ reference, bib
         const overflowLeft = viewportPadding - popupLeftViewport;
         const newLeftViewport = popupLeftViewport + overflowLeft;
         finalLeft = newLeftViewport + window.scrollX;
-        console.log(`Left overflow (${overflowLeft.toFixed(2)}px): Adjusting finalLeft to ${finalLeft.toFixed(2)}`);
       }
-      
-      console.log(`Final Top (Absolute): ${finalTop.toFixed(2)}`);
-      console.log(`Final Left (Absolute): ${finalLeft.toFixed(2)}`);
-      console.log("---------------------------------------------");
       
       setPopupPosition({ top: finalTop, left: finalLeft });
 

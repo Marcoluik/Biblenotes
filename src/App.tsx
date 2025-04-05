@@ -37,6 +37,14 @@ function App() {
   const [sharedNotes, setSharedNotes] = useState<Note[]>([]);
   const [activeTab, setActiveTab] = useState<'my-notes' | 'shared-notes'>('my-notes');
 
+  // Manually define the NWT Study Bible entry
+  const nwtStudyBibleEntry = {
+    id: 'nwtsty-en', // Unique ID for our custom fetcher
+    name: 'New World Translation (Study Bible) - English',
+    language: { id: 'eng', name: 'English' },
+    // Note: No actual API ID needed, our code handles this one specially
+  };
+
   useEffect(() => {
     // Check for existing session
     const checkSession = async () => {
@@ -70,51 +78,61 @@ function App() {
       }
     );
 
-    // Fetch available Bibles
+    // Fetch available Bibles from the official API
     const fetchBibles = async () => {
+      let fetchedBibles: { id: string; name: string; language: { id: string; name: string } }[] = [];
       try {
-        const bibles = await getAvailableBibles();
-        
-        if (bibles.length === 0) {
-          console.log('No Bibles found, using default Bible ID');
-          // Set a default Bible ID if no Bibles are found
-          setSelectedBibleId('de4e12af7f28f599-02'); // KJV Bible ID
-          return;
-        }
-        
-        setAvailableBibles(bibles);
-        setFilteredBibles(bibles);
-        
-        // Find KJV Bible and set it as default
-        const kjvBible = bibles.find(bible => 
-          bible.name.toLowerCase().includes('king james version') || 
-          bible.name.toLowerCase().includes('kjv') ||
-          bible.id === 'de4e12af7f28f599-02'
-        );
-        
-        if (kjvBible) {
-          console.log('Found KJV Bible:', kjvBible); // Debug log
-          setSelectedBibleId(kjvBible.id);
-        } else {
-          // Fall back to English Standard Version
-          const esvBible = bibles.find(bible => 
-            bible.name.toLowerCase().includes('english standard version') || 
-            bible.name.toLowerCase().includes('esv') ||
-            bible.id === '9879dbb7cfe39e4d-01'
-          );
-          
-          if (esvBible) {
-            console.log('Found ESV Bible:', esvBible); // Debug log
-            setSelectedBibleId(esvBible.id);
-          } else if (bibles.length > 0) {
-            console.log('Setting first Bible as default:', bibles[0]); // Debug log
-            setSelectedBibleId(bibles[0].id);
-          }
-        }
+        fetchedBibles = await getAvailableBibles();
+        console.log("Fetched Available Bibles from API:", fetchedBibles);
       } catch (error) {
-        console.error('Error fetching Bibles:', error);
-        // Set a default Bible ID if there's an error
-        setSelectedBibleId('de4e12af7f28f599-02'); // KJV Bible ID
+        console.error('Error fetching Bibles from API:', error);
+      }
+
+      const combinedBibles = [
+        nwtStudyBibleEntry,
+        ...fetchedBibles.filter(b => b.id !== nwtStudyBibleEntry.id && b.name !== nwtStudyBibleEntry.name)
+      ];
+      combinedBibles.sort((a, b) => a.name.localeCompare(b.name));
+
+      console.log("Combined Bibles list (before setting state):", JSON.stringify(combinedBibles, null, 2));
+
+      setAvailableBibles(combinedBibles);
+      setFilteredBibles(combinedBibles);
+
+      // Set default selection logic
+      // Prioritize NWT if available, then KJV, then ESV, then first in list
+      let defaultBibleId = '';
+      if (combinedBibles.some(b => b.id === nwtStudyBibleEntry.id)) {
+        defaultBibleId = nwtStudyBibleEntry.id;
+      } else {
+          const kjvBible = combinedBibles.find(bible => 
+            bible.id === 'de4e12af7f28f599-02' || // KJV ID
+            bible.name.toLowerCase().includes('king james version') || 
+            bible.name.toLowerCase().includes('kjv')
+          );
+          if (kjvBible) {
+            defaultBibleId = kjvBible.id;
+          } else {
+              const esvBible = combinedBibles.find(bible => 
+                bible.id === '9879dbb7cfe39e4d-01' || // ESV ID
+                bible.name.toLowerCase().includes('english standard version') || 
+                bible.name.toLowerCase().includes('esv')
+              );
+              if (esvBible) {
+                defaultBibleId = esvBible.id;
+              } else if (combinedBibles.length > 0) {
+                  // Fallback to the first available bible if others aren't found
+                  defaultBibleId = combinedBibles[0].id;
+              }
+          }
+      }
+
+      if (defaultBibleId) {
+        console.log(`Setting default Bible ID to: ${defaultBibleId}`);
+        setSelectedBibleId(defaultBibleId);
+      } else {
+          console.warn("Could not determine a default Bible ID.");
+          // Handle case where no bibles are available at all?
       }
     };
     
@@ -127,23 +145,20 @@ function App() {
 
   // Filter Bibles when search term changes
   useEffect(() => {
-    console.log('Bible search term changed:', bibleSearchTerm);
-    console.log('Available Bibles:', availableBibles);
-
+    console.log('Filtering Bibles based on search term:', bibleSearchTerm);
+    console.log('Filtering from availableBibles:', JSON.stringify(availableBibles, null, 2));
     if (!bibleSearchTerm.trim()) {
-      console.log('Empty search term, showing all Bibles');
+      console.log('Empty search term, showing all availableBibles');
       setFilteredBibles(availableBibles);
       return;
     }
-
     const searchTerm = bibleSearchTerm.toLowerCase();
     const filtered = availableBibles.filter(bible => {
       const nameMatch = bible.name.toLowerCase().includes(searchTerm);
       const languageMatch = bible.language.name.toLowerCase().includes(searchTerm);
       return nameMatch || languageMatch;
     });
-
-    console.log('Filtered Bibles:', filtered);
+    console.log('Filtered Bibles result:', JSON.stringify(filtered, null, 2));
     setFilteredBibles(filtered);
   }, [bibleSearchTerm, availableBibles]);
 
@@ -602,20 +617,24 @@ function App() {
                 onChange={(e) => setBibleSearchTerm(e.target.value)}
               />
               <div className="max-h-60 overflow-y-auto">
-                {filteredBibles.map(bible => (
-                  <button
-                    key={bible.id}
-                    onClick={() => {
-                      setSelectedBibleId(bible.id);
-                      setShowBibleModal(false);
-                    }}
-                    className={`w-full text-left px-4 py-2 hover:bg-gray-100 ${
-                      bible.id === selectedBibleId ? 'bg-blue-50' : ''
-                    }`}
-                  >
-                    {bible.name} ({bible.language.name})
-                  </button>
-                ))}
+                {filteredBibles.length === 0 ? (
+                  <p className="text-gray-500 px-4 py-2">No Bibles found matching your search.</p>
+                ) : (
+                  filteredBibles.map(bible => (
+                    <button
+                      key={bible.id}
+                      onClick={() => {
+                        setSelectedBibleId(bible.id);
+                        setShowBibleModal(false);
+                      }}
+                      className={`w-full text-left px-4 py-2 hover:bg-gray-100 ${
+                        bible.id === selectedBibleId ? 'bg-blue-50 font-semibold' : ''
+                      }`}
+                    >
+                      {bible.name} ({bible.language.name})
+                    </button>
+                  ))
+                )}
               </div>
             </div>
           </div>
