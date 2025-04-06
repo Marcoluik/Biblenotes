@@ -8,6 +8,12 @@ import { Note } from './types';
 import { DailyVerse } from './components/DailyVerse';
 import { InlineBibleVerseSelector } from './components/InlineBibleVerseSelector';
 
+// Define Shared Note Info interface
+interface SharedNoteInfo {
+  note: Note;
+  canEdit: boolean;
+}
+
 // Define Profile type 
 interface Profile {
   id: string;
@@ -46,7 +52,7 @@ function App() {
   const bibleDropdownRef = useRef<HTMLDivElement>(null);
   const [showBibleModal, setShowBibleModal] = useState(false);
 
-  const [sharedNotes, setSharedNotes] = useState<Note[]>([]);
+  const [sharedNotes, setSharedNotes] = useState<SharedNoteInfo[]>([]);
   const [activeTab, setActiveTab] = useState<'my-notes' | 'shared-notes'>('my-notes');
 
   useEffect(() => {
@@ -233,17 +239,30 @@ function App() {
     } 
     console.log(`[Bible Effect] User and profile ready (User: ${user.id}). Proceeding...`);
 
-    // Manually define NWT entries
+    // --- Define Bible Entries --- 
+    // Online NWT via Proxy
     const nwtStudyBibleEntryEn = {
       id: 'nwtsty-en', 
-      name: 'New World Translation (Study Bible) - English',
+      name: 'NWT (Study Bible) - English - not working', // Renamed slightly for clarity
       language: { id: 'eng', name: 'English' },
     };
     const nwtStudyBibleEntryDa = {
       id: 'nwtsty-da',
-      name: 'New World Translation (Study Bible) - Danish',
+      name: 'NWT (Study Bible) - Danish - not working', // Renamed slightly for clarity
       language: { id: 'dan', name: 'Danish' },
     };
+    // Downloaded NWT via Static JSON
+    const nwtDownloadedEn = {
+      id: 'nwt-local-en', 
+      name: 'NWT (Downloaded) - English',
+      language: { id: 'eng', name: 'English' },
+    };
+    const nwtDownloadedDa = {
+      id: 'nwt-local-da',
+      name: 'NWT (Downloaded) - Danish',
+      language: { id: 'dan', name: 'Danish' },
+    };
+    // --- End Define Entries ---
 
     const fetchBiblesAndSetDefault = async () => {
       let fetchedBibles: { id: string; name: string; language: { id: string; name: string } }[] = [];
@@ -252,28 +271,28 @@ function App() {
         console.log("Fetched Available Bibles from API:", fetchedBibles);
       } catch (error) {
         console.error('Error fetching Bibles from API:', error);
+        // Continue even if API fetch fails, we have NWT options
       }
 
+      // Combine manual NWT entries with fetched ones, filtering duplicates
       const combinedBibles = [
         nwtStudyBibleEntryEn, 
         nwtStudyBibleEntryDa,
+        nwtDownloadedEn, // Add downloaded EN
+        nwtDownloadedDa, // Add downloaded DA
+        // Filter out any fetched Bibles that match our manual entries by ID or Name
         ...fetchedBibles.filter(b => 
-            b.id !== nwtStudyBibleEntryEn.id && 
-            b.name !== nwtStudyBibleEntryEn.name &&
-            b.id !== nwtStudyBibleEntryDa.id && 
-            b.name !== nwtStudyBibleEntryDa.name
+            ![nwtStudyBibleEntryEn.id, nwtStudyBibleEntryDa.id, nwtDownloadedEn.id, nwtDownloadedDa.id].includes(b.id) &&
+            ![nwtStudyBibleEntryEn.name, nwtStudyBibleEntryDa.name, nwtDownloadedEn.name, nwtDownloadedDa.name].includes(b.name)
         )
       ];
       combinedBibles.sort((a, b) => a.name.localeCompare(b.name));
       
-      // Only update state if list is different?
-      // Could compare stringified versions if performance is ever an issue
       setAvailableBibles(combinedBibles);
       setFilteredBibles(combinedBibles);
 
-      // --- Default Selection Logic --- 
+      // --- Default Selection Logic (ensure profile and options exist) ---
       let defaultBibleId = '';
-      // Use profile state here
       const userPreferredId = profile?.preferred_bible_id; 
       console.log("Setting default Bible. User Preferred ID:", userPreferredId);
       
@@ -282,8 +301,11 @@ function App() {
         console.log(`Using user preferred Bible ID: ${defaultBibleId}`);
       } else { 
         console.log("No valid user preference found, applying default logic...");
-        const nwtEn = combinedBibles.find(b => b.id === nwtStudyBibleEntryEn.id);
-        const nwtDa = combinedBibles.find(b => b.id === nwtStudyBibleEntryDa.id);
+        // Prioritize Downloaded, then Study, then others
+        const nwtLocalEn = combinedBibles.find(b => b.id === nwtDownloadedEn.id);
+        const nwtLocalDa = combinedBibles.find(b => b.id === nwtDownloadedDa.id);
+        const nwtOnlineEn = combinedBibles.find(b => b.id === nwtStudyBibleEntryEn.id);
+        const nwtOnlineDa = combinedBibles.find(b => b.id === nwtStudyBibleEntryDa.id);
         const kjvBible = combinedBibles.find(bible => 
             bible.id === 'de4e12af7f28f599-02' || 
             bible.name.toLowerCase().includes('king james version') || 
@@ -295,9 +317,11 @@ function App() {
             bible.name.toLowerCase().includes('esv')
         );
 
-        // Apply default order
-        if (nwtEn) defaultBibleId = nwtEn.id;
-        else if (nwtDa) defaultBibleId = nwtDa.id;
+        // Apply default order: Local EN -> Local DA -> Online EN -> Online DA -> KJV -> ESV -> First available
+        if (nwtLocalDa) defaultBibleId = nwtLocalDa.id; // Prioritize Danish downloaded
+        else if (nwtLocalEn) defaultBibleId = nwtLocalEn.id;
+        else if (nwtOnlineEn) defaultBibleId = nwtOnlineEn.id;
+        else if (nwtOnlineDa) defaultBibleId = nwtOnlineDa.id;
         else if (kjvBible) defaultBibleId = kjvBible.id;
         else if (esvBible) defaultBibleId = esvBible.id;
         else if (combinedBibles.length > 0) defaultBibleId = combinedBibles[0].id;
@@ -310,13 +334,12 @@ function App() {
       } else {
           console.warn("Could not determine a default or preferred Bible ID.");
       }
-      // Ensure loading stops after bibles are processed
-      setIsLoading(false); 
+      setIsLoading(false); // Ensure loading stops after bibles are processed
     };
     
     fetchBiblesAndSetDefault();
     
-  }, [user, profile]); // Correct dependencies: Run when user or profile becomes available
+  }, [user, profile]);
 
   // Filter Bibles when search term changes
   useEffect(() => {
@@ -361,7 +384,7 @@ function App() {
   const fetchNotes = async (userId: string) => {
     try {
       console.log('Fetching notes for user:', userId);
-      
+
       // Fetch user's own notes
       const { data: userNotes, error: userNotesError } = await supabase
         .from('notes')
@@ -372,52 +395,60 @@ function App() {
       if (userNotesError) throw userNotesError;
       console.log('User notes fetched:', userNotes?.length || 0);
       setNotes(userNotes || []);
-      
-      // First get the shared note IDs
-      console.log('Fetching shared note IDs for user:', userId);
-      const { data: sharedNoteIds, error: sharedIdsError } = await supabase
+
+      // Fetch shared note IDs AND their permissions
+      console.log('Fetching shared note info for user:', userId);
+      const { data: sharedInfo, error: sharedInfoError } = await supabase
         .from('shared_notes')
-        .select('note_id')
+        .select('note_id, can_edit') // Select can_edit here
         .eq('shared_with', userId);
 
-      if (sharedIdsError) {
-        console.error('Error fetching shared note IDs:', sharedIdsError);
-        throw sharedIdsError;
+      if (sharedInfoError) {
+        console.error('Error fetching shared note info:', sharedInfoError);
+        throw sharedInfoError;
       }
-      
-      console.log('Shared note IDs found:', sharedNoteIds?.length || 0);
-      console.log('Shared note IDs:', sharedNoteIds);
 
-      // Then fetch the actual notes
-      let sharedNotesList: Note[] = [];
-      if (sharedNoteIds && sharedNoteIds.length > 0) {
-        const noteIds = sharedNoteIds.map(item => item.note_id);
+      console.log('Shared note info found:', sharedInfo?.length || 0);
+
+      let combinedSharedNotes: SharedNoteInfo[] = [];
+      if (sharedInfo && sharedInfo.length > 0) {
+        const noteIds = sharedInfo.map(item => item.note_id);
         console.log('Fetching notes with IDs:', noteIds);
-        
-        const { data: sharedNotes, error: sharedNotesError } = await supabase
+
+        // Fetch the actual note details
+        const { data: sharedNoteDetails, error: sharedNotesError } = await supabase
           .from('notes')
           .select('*')
           .in('id', noteIds);
 
         if (sharedNotesError) {
-          console.error('Error fetching shared notes:', sharedNotesError);
+          console.error('Error fetching shared note details:', sharedNotesError);
           throw sharedNotesError;
         }
 
-        console.log('Shared notes fetched:', sharedNotes?.length || 0);
-        console.log('Shared notes data:', sharedNotes);
-        sharedNotesList = sharedNotes || [];
+        console.log('Shared note details fetched:', sharedNoteDetails?.length || 0);
+
+        // Combine note details with permissions
+        if (sharedNoteDetails) {
+          combinedSharedNotes = sharedNoteDetails.map(noteDetail => {
+            const permission = sharedInfo.find(info => info.note_id === noteDetail.id);
+            return {
+              note: noteDetail,
+              canEdit: permission?.can_edit ?? false // Default to false if not found (shouldn't happen)
+            };
+          });
+        }
       } else {
         console.log('No shared notes found for user');
       }
-      
-      console.log('Setting shared notes state:', sharedNotesList.length);
-      setSharedNotes(sharedNotesList);
-      
-      // Extract unique categories from both user notes and shared notes
-      const allNotes = [...(userNotes || []), ...sharedNotesList];
+
+      console.log('Setting combined shared notes state:', combinedSharedNotes.length);
+      setSharedNotes(combinedSharedNotes);
+
+      // Extract unique categories from both user notes and shared notes details
+      const allNotes = [...(userNotes || []), ...combinedSharedNotes.map(sn => sn.note)];
       console.log('Total notes (user + shared):', allNotes.length);
-      
+
       const uniqueCategories = Array.from(new Set(
         allNotes
           .map((note: Note) => note.category)
@@ -425,6 +456,7 @@ function App() {
       ));
       console.log('Unique categories:', uniqueCategories);
       setCategories(uniqueCategories);
+
     } catch (error: any) {
       console.error('Error fetching notes:', error);
       setError(error.message);
@@ -434,20 +466,61 @@ function App() {
   };
 
   const handleSaveNote = async (id: string, title: string, content: string) => {
+    console.log(`[handleSaveNote] Attempting to save note ID: ${id}`);
     try {
-      const { error } = await supabase
+      // Perform the database update
+      const { error: updateError } = await supabase
         .from('notes')
-        .update({ title, content })
+        .update({ title, content, updated_at: new Date().toISOString() }) // Also update timestamp
         .eq('id', id);
 
-      if (error) throw error;
+      if (updateError) {
+        console.error('[handleSaveNote] Supabase update error:', updateError);
+        // Check for specific permission errors if possible (depends on Supabase error structure)
+        if (updateError.message.includes('permission') || updateError.message.includes('policy')) {
+          setError('Save failed: You may not have permission to edit this note.');
+        } else {
+          setError(`Save failed: ${updateError.message}`);
+        }
+        throw updateError; // Re-throw to prevent updating local state
+      }
 
-      setNotes(notes.map(note => 
-        note.id === id ? { ...note, title, content } : note
-      ));
+      console.log(`[handleSaveNote] Supabase update successful for note ID: ${id}`);
+      
+      // Update local state: Check both notes and sharedNotes
+      let noteFoundInOwn = false;
+      setNotes(prevNotes => 
+        prevNotes.map(note => {
+          if (note.id === id) {
+            noteFoundInOwn = true;
+            console.log('[handleSaveNote] Updating note in local \'notes\' state.');
+            return { ...note, title, content };
+          }
+          return note;
+        })
+      );
+
+      if (!noteFoundInOwn) {
+        setSharedNotes(prevSharedNotes => 
+          prevSharedNotes.map(sharedInfo => {
+            if (sharedInfo.note.id === id) {
+              console.log('[handleSaveNote] Updating note in local \'sharedNotes\' state.');
+              // Important: Only update title/content, keep existing canEdit permission
+              return { ...sharedInfo, note: { ...sharedInfo.note, title, content } };
+            }
+            return sharedInfo;
+          })
+        );
+      }
+      
     } catch (error: any) {
-      console.error('Error saving note:', error);
-      setError(error.message);
+      // Error is already logged and set in the updateError check
+      // We re-threw the error, so it might be caught here again
+      // Avoid setting a generic error message if a specific one was already set.
+      if (!error.message.includes('Save failed')) {
+           console.error('[handleSaveNote] Generic catch block error:', error);
+           setError(`An unexpected error occurred during save: ${error.message}`);
+      }
     }
   };
 
@@ -852,7 +925,9 @@ function App() {
                         bible.id === selectedBibleId ? 'bg-blue-50 font-semibold' : ''
                       }`}
                     >
-                      {bible.name} ({bible.language.name})
+                      {/* Display name includes (Downloaded) or (Study Bible) */} 
+                      {bible.name} 
+                      ({bible.language.name})
                     </button>
                   ))
                 )}
@@ -962,14 +1037,15 @@ function App() {
           )
         ) : (
           sharedNotes.length > 0 ? (
-            sharedNotes.map((note) => (
+            sharedNotes.map((sharedNoteInfo) => (
               <NoteComponent
-                key={note.id}
-                note={note}
+                key={sharedNoteInfo.note.id}
+                note={sharedNoteInfo.note}
                 onSave={handleSaveNote}
                 onDelete={handleDeleteNote}
                 bibleId={selectedBibleId}
                 isShared={true}
+                canEdit={sharedNoteInfo.canEdit}
               />
             ))
           ) : (

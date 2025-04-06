@@ -1,6 +1,6 @@
 import React from 'react';
-// Keep ReactMarkdown import commented out for now
-// import ReactMarkdown from 'react-markdown'; 
+// Keep ReactMarkdown import uncommented
+import ReactMarkdown from 'react-markdown';
 import { Note } from '../types';
 import { BibleVerseHover } from './BibleVerseHover';
 
@@ -12,21 +12,21 @@ interface NoteViewModalProps {
 
 export const NoteViewModal: React.FC<NoteViewModalProps> = ({ note, onClose, bibleId }) => {
 
+  // Restore the renderContentWithStructure function
   const renderContentWithStructure = () => {
     const paragraphs = note.content.trim().split(/\n\s*\n/);
 
     return paragraphs.map((paragraph, paraIndex) => {
       if (!paragraph.trim()) {
-        return <p key={`para-${paraIndex}`}></p>; // Represent blank lines between paragraphs
+        return <p key={`para-${paraIndex}`} className="mb-4"></p>; // Add margin for spacing
       }
 
       // Split paragraph into lines based on single newlines
       const lines = paragraph.split('\n');
 
       return (
-        <p key={`para-${paraIndex}`}>
+        <p key={`para-${paraIndex}`} className="mb-4"> {/* Add margin to paragraph */}
           {lines.map((line, lineIndex) => (
-            // Use React.Fragment to group line content + potential break tag
             <React.Fragment key={`line-${lineIndex}`}>
               {line.split(/(\[.*?\])/g).filter(part => part).map((part, partIndex) => {
                 const verseMatch = part.match(/\[(.*?)\]/);
@@ -40,8 +40,16 @@ export const NoteViewModal: React.FC<NoteViewModalProps> = ({ note, onClose, bib
                     />
                   );
                 } else {
-                  // Render text part as simple span (no markdown)
-                  return <span key={`part-${partIndex}`}>{part}</span>;
+                  // Render text part using ReactMarkdown, disabling block elements like <p>
+                  return (
+                    <ReactMarkdown 
+                      key={`part-${partIndex}`}
+                      allowedElements={['strong', 'em', 'u', 'a', 'code', 'span', 'br', 'sub', 'sup', 'del']} // Allow common inline elements
+                      unwrapDisallowed={true} // Render content of disallowed elements directly
+                    >
+                      {part}
+                    </ReactMarkdown>
+                  );
                 }
               })}
               {/* Add <br /> if it's not the last line within the paragraph */}
@@ -70,11 +78,10 @@ export const NoteViewModal: React.FC<NoteViewModalProps> = ({ note, onClose, bib
           </button>
         </div>
         
-        {/* Content - Temporarily removed prose class */}
-        <div className="p-6 overflow-y-auto flex-grow">
-          <div> {/* Removed prose class */} 
-            {renderContentWithStructure()}
-          </div>
+        {/* Content - Call the restored function */}
+        {/* Remove prose class unless specific styling is desired */} 
+        <div className="p-6 overflow-y-auto flex-grow"> 
+          {renderContentWithStructure()}
         </div>
         
         {/* Footer */}

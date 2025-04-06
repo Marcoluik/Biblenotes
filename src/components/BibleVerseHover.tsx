@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { searchBibleVerses } from '../lib/bibleApi';
-import { fetchVerseFromJwOrg } from '../lib/jwOrgApi';
+import { fetchVerseFromJwOrg, fetchVerseLocally } from '../lib/jwOrgApi';
 
 interface BibleVerseHoverProps {
   reference: string;
@@ -20,51 +20,79 @@ export const BibleVerseHover: React.FC<BibleVerseHoverProps> = ({ reference, bib
 
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const handleMouseEnter = () => {
+  const handleMouseEnter = (event: React.MouseEvent<HTMLSpanElement>) => {
     if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
-    setIsHovered(true);
+    
+    const rect = event.currentTarget.getBoundingClientRect();
+    setPopupPosition({
+        top: rect.bottom + window.scrollY + 5, // Position below the element
+        left: rect.left + window.scrollX
+    });
+    
+    hoverTimeoutRef.current = setTimeout(() => {
+      setIsHovered(true);
+    }, 500); // Delay before showing popup
   };
 
   const handleMouseLeave = () => {
-    hoverTimeoutRef.current = setTimeout(() => {
-      setIsHovered(false);
-    }, 200);
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    setIsHovered(false);
   };
 
   useEffect(() => {
     let isMounted = true;
     
     const fetchVerse = async () => {
-      if (!reference || !isHovered) return;
+      if (!reference || !isHovered || !bibleId) { // Ensure bibleId is present
+          // Optionally clear state if reference/hover changes while fetching is irrelevant
+          // setVerseContent(null); setError(null); setIsLoading(false); setShowPopup(false);
+          return;
+      }
       
       setShowPopup(true);
       setIsLoading(true);
       setError(null);
       setVerseContent(null);
       
+      console.log(`[Hover] Fetching verse: ${reference} with Bible ID: ${bibleId}`);
+
       try {
         let fetchedContent: string | null = null;
         
-        if (bibleId?.startsWith('nwtsty-')) {
-          fetchedContent = await fetchVerseFromJwOrg(reference, bibleId);
+        // --- Logic to determine fetch method --- 
+        if (bibleId.startsWith('nwt-local-')) {
+            const lang = bibleId.endsWith('-da') ? 'da' : 'en';
+            console.log(`[Hover] Using local fetch for lang: ${lang}`);
+            fetchedContent = await fetchVerseLocally(reference, lang);
+        } else if (bibleId.startsWith('nwtsty-')) {
+            console.log(`[Hover] Using proxy fetch for bibleId: ${bibleId}`);
+            fetchedContent = await fetchVerseFromJwOrg(reference, bibleId);
         } else {
-          const verses = await searchBibleVerses(reference, bibleId);
-          if (verses && verses.length > 0) {
-            fetchedContent = verses[0].content || verses[0].text || '';
-          }
+            console.log(`[Hover] Using standard API fetch for bibleId: ${bibleId}`);
+            // Assumes searchBibleVerses handles other Bible IDs via scripture.api.bible
+            const verses = await searchBibleVerses(reference, bibleId);
+            if (verses && verses.length > 0) {
+              fetchedContent = verses[0].content || verses[0].text || '';
+            } else {
+                console.log(`[Hover] Standard API search returned no results for ${reference}`);
+            }
         }
+        // --- End Logic --- 
         
         if (isMounted) {
           if (fetchedContent !== null && fetchedContent.trim() !== '') {
+            console.log(`[Hover] Successfully fetched content for ${reference}`);
             setVerseContent(fetchedContent);
           } else {
-            setError('Verse not found or failed to load');
+            console.warn(`[Hover] Verse not found or empty content for ${reference} using ID ${bibleId}`);
+            setError('Verse not found or content is empty');
           }
         }
-      } catch (err) {
+      } catch (err: any) { // Catch specific error type if possible
         if (isMounted) {
-          console.error('Error fetching verse:', err);
-          setError('Failed to load verse');
+          console.error(`[Hover] Error fetching verse ${reference} using ID ${bibleId}:`, err);
+          // Display a user-friendly message from the error if available
+          setError(err.message || 'Failed to load verse'); 
         }
       } finally {
         if (isMounted) {
@@ -76,6 +104,7 @@ export const BibleVerseHover: React.FC<BibleVerseHoverProps> = ({ reference, bib
     if (isHovered) {
       fetchVerse();
     } else {
+      // Reset state when not hovered
       setVerseContent(null);
       setError(null);
       setIsLoading(false);
@@ -87,7 +116,7 @@ export const BibleVerseHover: React.FC<BibleVerseHoverProps> = ({ reference, bib
       isMounted = false;
       if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
     };
-  }, [reference, isHovered, bibleId]);
+  }, [reference, isHovered, bibleId]); // Dependency array is correct
 
   useEffect(() => {
     if (isHovered && triggerRef.current) {
@@ -95,35 +124,66 @@ export const BibleVerseHover: React.FC<BibleVerseHoverProps> = ({ reference, bib
       const triggerRect = triggerEl.getBoundingClientRect();
       
       const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight; // Get height too
+      const currentScrollY = window.scrollY;
+      const currentScrollX = window.scrollX;
       const viewportPadding = 10;
       
-      const estimatedPopupWidth = Math.min(320, viewportWidth * 0.9);
+      // Estimate based on current style, might need refinement
+      const estimatedPopupWidth = Math.min(320, viewportWidth * 0.9); 
+      // Estimate height too, although we don't adjust for it yet
+      // const estimatedPopupHeight = 384; // From max-h-96 (24rem)
       
-      let finalTop = triggerRect.bottom + window.scrollY + 5;
-      let finalLeft = triggerRect.left + window.scrollX;
+      let finalTop = triggerRect.bottom + currentScrollY + 5;
+      let finalLeft = triggerRect.left + currentScrollX;
 
-      let popupLeftViewport = finalLeft - window.scrollX;
+      // --- Start Debug Logging ---
+      console.log('[Position Debug]', {
+        triggerRect: JSON.parse(JSON.stringify(triggerRect)), // Log a plain object copy
+        viewportWidth,
+        viewportHeight,
+        currentScrollY,
+        currentScrollX,
+        initialCalculatedTop: finalTop,
+        initialCalculatedLeft: finalLeft,
+      });
+      // --- End Debug Logging ---
+
+      let popupLeftViewport = finalLeft - currentScrollX;
       let popupRightViewport = popupLeftViewport + estimatedPopupWidth;
 
       if (popupRightViewport > viewportWidth - viewportPadding) {
         const overflowRight = popupRightViewport - (viewportWidth - viewportPadding);
         const newLeftViewport = popupLeftViewport - overflowRight;
-        finalLeft = newLeftViewport + window.scrollX;
+        finalLeft = newLeftViewport + currentScrollX;
         popupLeftViewport = newLeftViewport; 
+        console.log(`[Position Debug] Adjusted LEFT for right overflow. New finalLeft: ${finalLeft}`);
       }
 
       if (popupLeftViewport < viewportPadding) {
         const overflowLeft = viewportPadding - popupLeftViewport;
         const newLeftViewport = popupLeftViewport + overflowLeft;
-        finalLeft = newLeftViewport + window.scrollX;
+        finalLeft = newLeftViewport + currentScrollX;
+        console.log(`[Position Debug] Adjusted LEFT for left overflow. New finalLeft: ${finalLeft}`);
       }
+
+      // Optional: Add vertical adjustment logic here if needed later
+      // let popupTopViewport = finalTop - currentScrollY;
+      // let popupBottomViewport = popupTopViewport + estimatedPopupHeight;
+      // if (popupBottomViewport > viewportHeight - viewportPadding) { ... adjust finalTop ... }
+      // if (popupTopViewport < viewportPadding) { ... adjust finalTop ... } 
       
+      console.log(`[Position Debug] Setting final position:`, { top: finalTop, left: finalLeft });
       setPopupPosition({ top: finalTop, left: finalLeft });
 
     } else {
-      setPopupPosition(null);
+      // Only clear position if not hovered, 
+      // otherwise it might clear position while content is loading
+      if (!isHovered) { 
+          setPopupPosition(null);
+      }
     }
-  }, [isHovered]);
+  }, [isHovered]); // Keep dependency array simple
 
   const popupContent = showPopup && popupPosition ? (
     <div 

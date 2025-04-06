@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { InlineBibleVerseSelector } from './InlineBibleVerseSelector';
 import { BibleVerseHover } from './BibleVerseHover';
 import { Note as NoteType } from '../types';
@@ -11,9 +12,10 @@ interface NoteProps {
   onDelete: (id: string) => void;
   bibleId: string;
   isShared?: boolean;
+  canEdit?: boolean;
 }
 
-export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isShared = false }) => {
+export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isShared = false, canEdit = false }) => {
   console.log('Note component rendered:', { 
     noteId: note.id, 
     title: note.title, 
@@ -29,12 +31,13 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
   const [shareEmail, setShareEmail] = useState('');
   const [shareError, setShareError] = useState<string | null>(null);
   const [shareSuccess, setShareSuccess] = useState(false);
-  const [sharedWithUsers, setSharedWithUsers] = useState<{ id: string; email: string }[]>([]);
+  const [sharedWithUsers, setSharedWithUsers] = useState<{ id: string; email: string; canEdit: boolean }[]>([]);
   const [isLoadingSharedUsers, setIsLoadingSharedUsers] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [sharerEmail, setSharerEmail] = useState<string | null>(null);
   const [isLoadingSharer, setIsLoadingSharer] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [allowEditing, setAllowEditing] = useState(false);
 
   // Fetch sharer information if this is a shared note
   useEffect(() => {
@@ -88,10 +91,10 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
   const fetchSharedUsers = async () => {
     setIsLoadingSharedUsers(true);
     try {
-      // First get the shared notes
+      // First get the shared notes AND permission status
       const { data: sharedNotes, error: sharedError } = await supabase
         .from('shared_notes')
-        .select('shared_with')
+        .select('shared_with, can_edit') // Select can_edit
         .eq('note_id', note.id);
 
       if (sharedError) throw sharedError;
@@ -113,12 +116,17 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
         email: string;
       }
 
-      const usersWithEmails = (users as UserWithEmail[]).map(user => ({
-        id: user.id,
-        email: user.email
-      }));
+      // Map permissions to user emails
+      const usersWithDetails = (users as UserWithEmail[]).map(user => {
+        const shareInfo = sharedNotes.find(sn => sn.shared_with === user.id);
+        return {
+          id: user.id,
+          email: user.email,
+          canEdit: shareInfo?.can_edit ?? false // Add canEdit status
+        };
+      });
 
-      setSharedWithUsers(usersWithEmails);
+      setSharedWithUsers(usersWithDetails);
     } catch (error) {
       console.error('Error fetching shared users:', error);
     } finally {
@@ -133,6 +141,13 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
     }
     
     try {
+      // Add check for edit permissions on shared notes
+      if (isShared && !canEdit) {
+        console.warn("Attempted to save a shared note without edit permissions.");
+        alert("You do not have permission to edit this shared note.");
+        return; // Prevent saving
+      }
+      
       console.log('Attempting to save note:', {
         id: note.id,
         title: title.trim(),
@@ -223,7 +238,8 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
         .insert({
           note_id: note.id,
           shared_by: note.user_id,
-          shared_with: userId
+          shared_with: userId,
+          can_edit: allowEditing
         });
 
       if (shareError) {
@@ -232,7 +248,7 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
       }
 
       // Update the shared users list
-      setSharedWithUsers([...sharedWithUsers, { id: userId, email: shareEmail.trim() }]);
+      setSharedWithUsers([...sharedWithUsers, { id: userId, email: shareEmail.trim(), canEdit: allowEditing }]);
       setShareEmail('');
       setShareSuccess(true);
       setTimeout(() => setShareSuccess(false), 2000);
@@ -298,7 +314,10 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
 
   const renderContent = () => {
     if (!isEditing) {
-      const lines = content.split('\n');
+      // Render a truncated version for the card view
+      const truncatedContent = content.length > 150 ? content.substring(0, 150) + '...' : content;
+      const lines = truncatedContent.split('\n');
+      
       return lines.map((line, index) => {
         // Check if the line contains a Bible verse reference
         const verseMatch = line.match(/\[(.*?)\]/);
@@ -306,7 +325,7 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
           // If the line is just the verse reference, render it as a standalone component
           if (line.trim() === `[${verseMatch[1]}]`) {
             return (
-              <div key={index} className="mb-2">
+              <div key={index} className="mb-1"> {/* Reduced margin for card view */}
                 <BibleVerseHover reference={verseMatch[1]} bibleId={bibleId} />
               </div>
             );
@@ -314,25 +333,44 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
             // If the verse reference is inline with other text, split the line and render each part
             const parts = line.split(/(\[.*?\])/);
             return (
-              <div key={index} className="mb-2">
-                {parts.map((part, partIndex) => {
+              <div key={index} className="mb-1"> {/* Reduced margin for card view */}
+                {parts.filter(part => part).map((part, partIndex) => { // Added filter for empty parts
                   const innerVerseMatch = part.match(/\[(.*?)\]/);
                   if (innerVerseMatch) {
                     return (
                       <BibleVerseHover 
-                        key={`${index}-${partIndex}`} 
+                        key={`${index}-${partIndex}`}
                         reference={innerVerseMatch[1]} 
                         bibleId={bibleId} 
                       />
                     );
                   }
-                  return <span key={`${index}-${partIndex}`}>{part}</span>;
+                  // Render text part using ReactMarkdown (inline only)
+                  return (
+                    <ReactMarkdown
+                      key={`${index}-${partIndex}`}
+                      allowedElements={['strong', 'em', 'u', 'code', 'span', 'del']} // Allow common inline elements
+                      unwrapDisallowed={true} // Render content of disallowed elements directly
+                    >
+                      {part}
+                    </ReactMarkdown>
+                  );
                 })}
               </div>
             );
           }
         }
-        return <div key={index} className="mb-2">{line}</div>;
+        // Render plain line using ReactMarkdown (inline only)
+        return (
+          <div key={index} className="mb-1"> {/* Reduced margin for card view */}
+            <ReactMarkdown
+              allowedElements={['strong', 'em', 'u', 'code', 'span', 'del']} // Allow common inline elements
+              unwrapDisallowed={true} // Render content of disallowed elements directly
+            >
+              {line}
+            </ReactMarkdown>
+          </div>
+        );
       });
     }
     return (
@@ -359,11 +397,11 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
                 </span>
               ) : sharerEmail ? (
                 <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
-                  Shared by {sharerEmail}
+                  {canEdit ? 'Collaborative with' : 'Shared by'} {sharerEmail}
                 </span>
               ) : (
                 <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
-                  Shared
+                  {canEdit ? 'Collaborative' : 'Shared'}
                 </span>
               )}
             </div>
@@ -382,8 +420,11 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
           </button>
           <button
             onClick={() => setIsEditing(true)}
-            className="text-blue-500 hover:text-blue-700 p-1"
+            className={`text-blue-500 hover:text-blue-700 p-1 ${
+              (isShared && !canEdit) ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
             title="Edit Note"
+            disabled={isShared && !canEdit}
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -554,9 +595,12 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
                   {sharedWithUsers.map(user => (
                     <div key={user.id} className="flex items-center justify-between bg-gray-50 p-2 rounded">
                       <span className="text-sm text-gray-600">{user.email}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${user.canEdit ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}`}>
+                        {user.canEdit ? 'Collaborator' : 'Viewer'}
+                      </span>
                       <button
                         onClick={() => handleRemoveShare(user.id)}
-                        className="text-red-500 hover:text-red-700"
+                        className="text-red-500 hover:text-red-700 ml-2"
                       >
                         Remove
                       </button>
@@ -579,6 +623,18 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
                   placeholder="Enter email address"
                   className="flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+                <div className="mb-4 flex items-center">
+                  <input
+                    id="allowEditing" 
+                    type="checkbox"
+                    checked={allowEditing}
+                    onChange={(e) => setAllowEditing(e.target.checked)}
+                    className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <label htmlFor="allowEditing" className="ml-2 block text-sm text-gray-900">
+                    Allow collaborator to edit
+                  </label>
+                </div>
                 <button
                   onClick={handleShareNote}
                   className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
