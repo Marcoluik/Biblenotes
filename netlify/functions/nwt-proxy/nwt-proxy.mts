@@ -31,7 +31,7 @@ function parseReference(reference: string | undefined): { bookName: string; chap
   if (!reference) return null;
   reference = reference.trim().toLowerCase();
   // Basic regex, might need refinement for edge cases
-  const match = reference.match(/^([1-3]?\s?[a-z]+(?:\\s+[a-z]+)*)\s?(\d+):(\d+)(?:-(\d+))?$/);
+  const match = reference.match(/^([1-3]?\s?[a-z]+(?:\s+[a-z]+)*)\s?(\d+):(\d+)(?:-(\d+))?$/);
   if (!match) return null;
   const bookName = match[1].trim();
   const chapter = parseInt(match[2], 10);
@@ -97,22 +97,15 @@ function cacheVerse(cacheKey: string, text: string): void {
 
 // --- End Helpers ---
 
-
 const handler: Handler = async (event: HandlerEvent, context: HandlerContext) => {
   const startTime = Date.now();
   console.log(`[NWT Proxy Fn] Function started at ${new Date().toISOString()}`);
   console.log(`[NWT Proxy Fn] Request path: ${event.path}`);
   console.log(`[NWT Proxy Fn] Query parameters:`, event.queryStringParameters);
   
-  // Set a timeout promise that will reject after 9 seconds
-  // This ensures we return before Netlify's 10-second timeout
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => {
-      console.log(`[NWT Proxy Fn] Timeout triggered after ${(Date.now() - startTime) / 1000} seconds`);
-      reject(new Error('Function timeout approaching, returning early'));
-    }, 9000); // 9 seconds
-  });
-
+  // Set CORS headers for all responses
+  const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
+  
   const reference = event.queryStringParameters?.ref;
   const lang = event.queryStringParameters?.lang || 'en';
   console.log(`[NWT Proxy Fn] Processing request for reference: "${reference}" in language: "${lang}"`);
@@ -120,18 +113,30 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
   // --- Input Validation ---
   if (!reference) {
     console.log(`[NWT Proxy Fn] Error: Missing ref query parameter`);
-    return { statusCode: 400, body: JSON.stringify({ error: 'Missing ref query parameter' }) };
+    return { 
+      statusCode: 400, 
+      headers: corsHeaders,
+      body: JSON.stringify({ error: 'Missing ref query parameter' }) 
+    };
   }
   // Add more supported languages here if needed
   if (!['en', 'da'].includes(lang)) { 
     console.log(`[NWT Proxy Fn] Error: Unsupported language code: ${lang}`);
-    return { statusCode: 400, body: JSON.stringify({ error: `Unsupported language code: ${lang}` }) };
+    return { 
+      statusCode: 400, 
+      headers: corsHeaders,
+      body: JSON.stringify({ error: `Unsupported language code: ${lang}` }) 
+    };
   }
   
   const parsedRef = parseReference(reference);
   if (!parsedRef) {
     console.log(`[NWT Proxy Fn] Error: Could not parse reference: ${reference}`);
-    return { statusCode: 400, body: JSON.stringify({ error: `Could not parse reference: ${reference}` }) };
+    return { 
+      statusCode: 400, 
+      headers: corsHeaders,
+      body: JSON.stringify({ error: `Could not parse reference: ${reference}` }) 
+    };
   }
   console.log(`[NWT Proxy Fn] Parsed reference:`, parsedRef);
   
@@ -144,7 +149,11 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
   const bookNumber = bookNameToNumberMap[parsedRef.bookName];
   if (bookNumber === undefined) {
     console.log(`[NWT Proxy Fn] Error: Book not found in mapping: ${parsedRef.bookName}`);
-    return { statusCode: 404, body: JSON.stringify({ error: `Book not found in mapping: ${parsedRef.bookName}` }) };
+    return { 
+      statusCode: 404, 
+      headers: corsHeaders,
+      body: JSON.stringify({ error: `Book not found in mapping: ${parsedRef.bookName}` }) 
+    };
   }
   console.log(`[NWT Proxy Fn] Book number for "${parsedRef.bookName}": ${bookNumber}`);
   
@@ -159,7 +168,7 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
     console.log(`[NWT Proxy Fn] Function completed in ${(Date.now() - startTime) / 1000} seconds`);
     return {
       statusCode: 200,
-      headers: { 'Access-Control-Allow-Origin': '*' },
+      headers: corsHeaders,
       body: JSON.stringify({ text: cachedText, cached: true }),
     };
   }
@@ -180,22 +189,18 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
     console.log(`[NWT Proxy Fn] Starting fetch request at ${new Date().toISOString()}`);
     const fetchStartTime = Date.now();
     
-    // Use Promise.race to compete with our timeout
-    const response = await Promise.race<AxiosResponse>([
-      axios.get(url, {
-        timeout: 8000, // 8 seconds (reduced to ensure we complete before Netlify timeout)
-        headers: { 
-          'Accept': 'application/json, text/plain, */*',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' 
-        }
-      }),
-      timeoutPromise
-    ]);
-
+    // Use a simpler approach with direct axios call
+    const response = await axios.get(url, {
+      timeout: 15000, // 15 seconds timeout
+      headers: { 
+        'Accept': 'application/json, text/plain, */*',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' 
+      }
+    });
+    
     const fetchDuration = (Date.now() - fetchStartTime) / 1000;
     console.log(`[NWT Proxy Fn] Fetch completed in ${fetchDuration} seconds`);
     console.log(`[NWT Proxy Fn] Response status for ${verseId} (${lang}): ${response.status}`);
-    console.log(`[NWT Proxy Fn] Response headers:`, response.headers);
     
     // Check response and parse
     if (response.status === 200 && response.data?.ranges?.[verseId]) {
@@ -220,21 +225,27 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
              console.log(`[NWT Proxy Fn] Function completed successfully in ${(Date.now() - startTime) / 1000} seconds`);
              return {
                  statusCode: 200,
-                 // Allow requests from any origin (adjust if needed for security)
-                 headers: { 'Access-Control-Allow-Origin': '*' }, 
+                 headers: corsHeaders,
                  body: JSON.stringify({ text: cleanedText }),
              };
         } else {
              console.error(`[NWT Proxy Fn] Failed to parse HTML for ${verseId} (${lang})`);
              console.log(`[NWT Proxy Fn] Function completed with error in ${(Date.now() - startTime) / 1000} seconds`);
-             return { statusCode: 500, body: JSON.stringify({ error: 'Failed to parse verse content' }) };
+             return { 
+               statusCode: 500, 
+               headers: corsHeaders,
+               body: JSON.stringify({ error: 'Failed to parse verse content' }) 
+             };
         }
     } else {
         console.error(`[NWT Proxy Fn] Verse ${verseId} (${lang}) not found or invalid response structure:`, response.data);
         console.log(`[NWT Proxy Fn] Function completed with error in ${(Date.now() - startTime) / 1000} seconds`);
-        return { statusCode: 404, body: JSON.stringify({ error: `Verse not found or invalid response from source for ${reference} (${lang})` }) };
+        return { 
+          statusCode: 404, 
+          headers: corsHeaders,
+          body: JSON.stringify({ error: `Verse not found or invalid response from source for ${reference} (${lang})` }) 
+        };
     }
-
   } catch (error: any) {
       console.error(`[NWT Proxy Fn] Error fetching verse ${verseId} (${lang}):`, error);
       console.error(`[NWT Proxy Fn] Error details:`, {
@@ -246,12 +257,12 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
       });
       
       // Handle timeout specifically
-      if (error.code === 'ECONNABORTED' || error.message.includes('timeout') || error.message.includes('Function timeout approaching')) {
+      if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
         console.log(`[NWT Proxy Fn] Timeout error detected, returning 504 status`);
         console.log(`[NWT Proxy Fn] Function completed with timeout in ${(Date.now() - startTime) / 1000} seconds`);
         return {
           statusCode: 504, // Gateway Timeout
-          headers: { 'Access-Control-Allow-Origin': '*' },
+          headers: corsHeaders,
           body: JSON.stringify({ 
             error: `Request timed out while fetching from source (${lang}). Please try again later.`,
             timeout: true
@@ -265,7 +276,7 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
       console.log(`[NWT Proxy Fn] Function completed with error in ${(Date.now() - startTime) / 1000} seconds`);
       return {
           statusCode: statusCode,
-          headers: { 'Access-Control-Allow-Origin': '*' }, // Allow CORS for errors too
+          headers: corsHeaders,
           body: JSON.stringify({ error: `Proxy error fetching from source (${lang}): ${message}` }),
       };
   }
