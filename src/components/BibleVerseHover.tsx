@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { searchBibleVerses } from '../lib/bibleApi';
 import { fetchVerseFromJwOrg, fetchVerseLocally } from '../lib/jwOrgApi';
@@ -23,14 +23,14 @@ export const BibleVerseHover: React.FC<BibleVerseHoverProps> = ({ reference, bib
   const handleMouseEnter = (event: React.MouseEvent<HTMLSpanElement>) => {
     if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
     
+    // Store the initial position calculation target
     const rect = event.currentTarget.getBoundingClientRect();
-    setPopupPosition({
-        top: rect.bottom + window.scrollY + 5, // Position below the element
-        left: rect.left + window.scrollX
-    });
+    // We'll calculate the exact position later in the effect
     
     hoverTimeoutRef.current = setTimeout(() => {
-      setIsHovered(true);
+      setIsHovered(true); 
+      // Position calculation will now happen in the position effect
+      // triggered by isHovered becoming true
     }, 500); // Delay before showing popup
   };
 
@@ -118,72 +118,114 @@ export const BibleVerseHover: React.FC<BibleVerseHoverProps> = ({ reference, bib
     };
   }, [reference, isHovered, bibleId]); // Dependency array is correct
 
-  useEffect(() => {
-    if (isHovered && triggerRef.current) {
-      const triggerEl = triggerRef.current;
-      const triggerRect = triggerEl.getBoundingClientRect();
-      
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight; // Get height too
-      const currentScrollY = window.scrollY;
-      const currentScrollX = window.scrollX;
-      const viewportPadding = 10;
-      
-      // Estimate based on current style, might need refinement
-      const estimatedPopupWidth = Math.min(320, viewportWidth * 0.9); 
-      // Estimate height too, although we don't adjust for it yet
-      // const estimatedPopupHeight = 384; // From max-h-96 (24rem)
-      
-      let finalTop = triggerRect.bottom + currentScrollY + 5;
-      let finalLeft = triggerRect.left + currentScrollX;
-
-      // --- Start Debug Logging ---
-      console.log('[Position Debug]', {
-        triggerRect: JSON.parse(JSON.stringify(triggerRect)), // Log a plain object copy
-        viewportWidth,
-        viewportHeight,
-        currentScrollY,
-        currentScrollX,
-        initialCalculatedTop: finalTop,
-        initialCalculatedLeft: finalLeft,
-      });
-      // --- End Debug Logging ---
-
-      let popupLeftViewport = finalLeft - currentScrollX;
-      let popupRightViewport = popupLeftViewport + estimatedPopupWidth;
-
-      if (popupRightViewport > viewportWidth - viewportPadding) {
-        const overflowRight = popupRightViewport - (viewportWidth - viewportPadding);
-        const newLeftViewport = popupLeftViewport - overflowRight;
-        finalLeft = newLeftViewport + currentScrollX;
-        popupLeftViewport = newLeftViewport; 
-        console.log(`[Position Debug] Adjusted LEFT for right overflow. New finalLeft: ${finalLeft}`);
-      }
-
-      if (popupLeftViewport < viewportPadding) {
-        const overflowLeft = viewportPadding - popupLeftViewport;
-        const newLeftViewport = popupLeftViewport + overflowLeft;
-        finalLeft = newLeftViewport + currentScrollX;
-        console.log(`[Position Debug] Adjusted LEFT for left overflow. New finalLeft: ${finalLeft}`);
-      }
-
-      // Optional: Add vertical adjustment logic here if needed later
-      // let popupTopViewport = finalTop - currentScrollY;
-      // let popupBottomViewport = popupTopViewport + estimatedPopupHeight;
-      // if (popupBottomViewport > viewportHeight - viewportPadding) { ... adjust finalTop ... }
-      // if (popupTopViewport < viewportPadding) { ... adjust finalTop ... } 
-      
-      console.log(`[Position Debug] Setting final position:`, { top: finalTop, left: finalLeft });
-      setPopupPosition({ top: finalTop, left: finalLeft });
-
-    } else {
-      // Only clear position if not hovered, 
-      // otherwise it might clear position while content is loading
-      if (!isHovered) { 
-          setPopupPosition(null);
-      }
+  // --- Refactored Position Calculation Logic ---
+  const calculateAndSetPosition = useCallback(() => {
+    if (!triggerRef.current || !isHovered || !showPopup) {
+        // Don't calculate if the trigger isn't mounted, 
+        // not hovered, or popup shouldn't be shown
+        console.log('[Position Calc] Skipping calculation (trigger/hover/show state)', { isHovered, showPopup, hasTrigger: !!triggerRef.current });
+        // Keep existing position if popup is closing but still faded out
+        if (!isHovered) {
+            setPopupPosition(null);
+        }
+        return;
     }
-  }, [isHovered]); // Keep dependency array simple
+    
+    const triggerEl = triggerRef.current;
+    const triggerRect = triggerEl.getBoundingClientRect();
+    
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const currentScrollY = window.scrollY;
+    const currentScrollX = window.scrollX;
+    const viewportPadding = 10;
+    
+    const estimatedPopupWidth = Math.min(320, viewportWidth * 0.9); 
+    
+    // For position: fixed, top/left are viewport-relative
+    // We use the triggerRect values directly.
+    let finalTop = triggerRect.bottom + 5; // Position below the element (viewport relative)
+    let finalLeft = triggerRect.left;    // Position aligned with left edge (viewport relative)
+
+    // --- Start Debug Logging ---
+    console.log('[Position Calc] Running calculation...', {
+      triggerRect: JSON.parse(JSON.stringify(triggerRect)), // Log plain object
+      viewportWidth, viewportHeight, currentScrollY, currentScrollX,
+      calculatedViewportTop: finalTop, // Renamed log field
+      calculatedViewportLeft: finalLeft, // Renamed log field
+    });
+    // --- End Debug Logging ---
+
+    // Adjust position based on viewport boundaries (using viewport-relative coordinates)
+    let popupRightEdge = finalLeft + estimatedPopupWidth;
+
+    // Check right boundary
+    if (popupRightEdge > viewportWidth - viewportPadding) {
+      const overflowRight = popupRightEdge - (viewportWidth - viewportPadding);
+      finalLeft -= overflowRight; // Shift left
+      console.log(`[Position Calc] Adjusted LEFT for right overflow. New finalLeft: ${finalLeft}`);
+    }
+
+    // Check left boundary
+    if (finalLeft < viewportPadding) {
+      finalLeft = viewportPadding; // Align with left padding
+      console.log(`[Position Calc] Adjusted LEFT for left overflow. New finalLeft: ${finalLeft}`);
+    }
+    
+    // Optional: Add vertical adjustment logic here if needed later (e.g., if popup goes off bottom)
+
+    console.log(`[Position Calc] Setting final position (fixed):`, { top: finalTop, left: finalLeft });
+    setPopupPosition({ top: finalTop, left: finalLeft });
+
+  }, [isHovered, showPopup]); // Dependencies for the calculation logic itself
+
+  // --- Effect for Handling Position and Scroll Listener ---
+  useEffect(() => {
+    // Define the scroll handler using the memoized calculation function
+    const handleScroll = () => {
+        console.log('[Scroll Handler] Fired');
+        // Only recalculate if the popup should still be conceptually "open"
+        if (isHovered && showPopup) { 
+            calculateAndSetPosition();
+        } else {
+            console.log('[Scroll Handler] Skipped recalc (hover/show state)', { isHovered, showPopup });
+        }
+    };
+
+    if (isHovered && showPopup) {
+        console.log('[Position Effect] Adding scroll listener and calculating initial position.');
+        // Calculate position immediately when popup becomes visible
+        calculateAndSetPosition(); 
+        
+        // Add scroll listener
+        window.addEventListener('scroll', handleScroll, { passive: true });
+        // Optional: Add resize listener too?
+        // window.addEventListener('resize', handleScroll, { passive: true });
+
+        // Cleanup function for this effect instance
+        return () => {
+          window.removeEventListener('scroll', handleScroll);
+          console.log('[Position Effect] Removed scroll listener.');
+          // window.removeEventListener('resize', handleScroll);
+        };
+    } else {
+        console.log('[Position Effect] Skipping listener setup (hover/show state)', { isHovered, showPopup });
+        // If not hovered or shouldn't show, ensure no listener is active
+        // The position state is managed within calculateAndSetPosition or the hover leave logic
+        // Optional: Explicitly clear position here if desired, though handleMouseLeave also does it.
+        // setPopupPosition(null); 
+        
+        // Ensure listener is removed if effect re-runs due to dependency change while !isHovered
+         window.removeEventListener('scroll', handleScroll); 
+         // window.removeEventListener('resize', handleScroll);
+    }
+    // This effect should run when hover state changes or popup visibility changes
+  }, [isHovered, showPopup, calculateAndSetPosition]); // Add calculateAndSetPosition to dependencies
+
+  // Log position state changes
+  useEffect(() => {
+      console.log('[State Update] popupPosition changed:', popupPosition);
+  }, [popupPosition]);
 
   const popupContent = showPopup && popupPosition ? (
     <div 
