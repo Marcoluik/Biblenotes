@@ -7,8 +7,8 @@
 
     // --- Configuration ---
     const OUTPUT_DIR = 'public/verse-data';
-    const OUTPUT_FILENAME = 'da.json'; // Output file for Danish verses
-    const LANGUAGE_CODE = 'da'; // Language code for fetching and output
+    const OUTPUT_FILENAME = 'en.json'; // Output file for Danish verses
+    const LANGUAGE_CODE = 'en'; // Language code for fetching and output
     const BASE_URL = 'https://www.jw.org';
 
     // --- Correctly determine API path based on language ---
