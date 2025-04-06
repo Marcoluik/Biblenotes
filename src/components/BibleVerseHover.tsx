@@ -20,7 +20,7 @@ export const BibleVerseHover: React.FC<BibleVerseHoverProps> = ({ reference, bib
 
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const handleMouseEnter = (event: React.MouseEvent<HTMLSpanElement>) => {
+  const handleMouseEnter = () => {
     if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
     
     // We'll calculate the exact position later in the effect
