@@ -8,46 +8,76 @@ import axios from 'axios';
  * @param bibleId The bible ID string (e.g., 'nwtsty-en', 'nwtsty-da') used to determine the language.
  * @returns The cleaned verse text from the backend or null if not found/error.
  */
-export async function fetchVerseFromJwOrg(reference: string, bibleId: string = 'nwtsty-en'): Promise<string | null> {
-  console.log(`Requesting NWT verse via Netlify Function: ${reference} for bibleId: ${bibleId}`);
+export async function fetchVerseFromJwOrg(reference: string, bibleId: string = 'nwt'): Promise<string> {
+  const startTime = Date.now();
+  console.log(`[JW.org API] Starting fetch for reference: "${reference}", bibleId: "${bibleId}" at ${new Date().toISOString()}`);
   
-  // Extract language code from bibleId (e.g., 'nwtsty-en' -> 'en')
-  // Default to 'en' if format is unexpected
-  const langMatch = bibleId.match(/nwtsty-(\w+)/);
-  const lang = langMatch ? langMatch[1] : 'en';
-  
-  const proxyUrl = `/.netlify/functions/nwt-proxy`; 
-
   try {
+    // Determine language from bibleId
+    const lang = bibleId === 'nwt' ? 'en' : 'da';
+    console.log(`[JW.org API] Using language: "${lang}" for bibleId: "${bibleId}"`);
+    
+    // Construct the proxy URL
+    const proxyUrl = `/.netlify/functions/nwt-proxy?ref=${encodeURIComponent(reference)}&lang=${lang}`;
+    console.log(`[JW.org API] Constructed proxy URL: ${proxyUrl}`);
+    
+    // Log request details
+    console.log(`[JW.org API] Sending request to Netlify Function at ${new Date().toISOString()}`);
+    const requestStartTime = Date.now();
+    
+    // Make the request
     const response = await axios.get(proxyUrl, {
-      params: {
-        ref: reference, // Pass reference
-        lang: lang      // Pass extracted language code
-      },
-      timeout: 30000 
+      timeout: 15000, // 15 seconds timeout on frontend
     });
-
-    if (response.status === 200 && response.data?.text) {
-      console.log(`Received text from Netlify Function for ${reference} (${lang}):`, response.data.text);
+    
+    const requestDuration = (Date.now() - requestStartTime) / 1000;
+    console.log(`[JW.org API] Request completed in ${requestDuration} seconds`);
+    console.log(`[JW.org API] Response status: ${response.status}`);
+    console.log(`[JW.org API] Response headers:`, response.headers);
+    
+    // Check if we have text in the response
+    if (response.data?.text) {
+      console.log(`[JW.org API] Successfully received verse text (${response.data.text.length} characters)`);
+      console.log(`[JW.org API] Total operation completed in ${(Date.now() - startTime) / 1000} seconds`);
       return response.data.text;
     } else {
-      console.error(`Netlify Function returned an unexpected response for ${reference} (${lang}):`, response.data);
-      return null;
+      console.error(`[JW.org API] No verse text found in response:`, response.data);
+      throw new Error('No verse text found in response');
     }
-
   } catch (error: any) {
+    console.error(`[JW.org API] Error fetching verse:`, error);
+    
+    // Log detailed error information
     if (axios.isAxiosError(error)) {
-      console.error(`Error calling Netlify Function for ${reference} (${lang}): ${error.message}`);
-      if (error.response) {
-        console.error(`Netlify Function Response Status (${lang}):`, error.response.status);
-        console.error(`Netlify Function Response Data (${lang}):`, error.response.data);
-      } else {
-        console.error(`No response received from Netlify Function for ${lang}`);
-      }
+      console.error(`[JW.org API] Axios error details:`, {
+        message: error.message,
+        code: error.code,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        config: {
+          url: error.config?.url,
+          method: error.config?.method,
+          timeout: error.config?.timeout,
+          headers: error.config?.headers
+        }
+      });
     } else {
-      console.error(`Unexpected error calling Netlify Function for ${reference} (${lang}):`, error);
+      console.error(`[JW.org API] Non-Axios error:`, error);
     }
-    return null;
+    
+    // Handle timeout specifically
+    if (error.response?.status === 504 || error.response?.data?.timeout) {
+      console.error(`[JW.org API] Timeout error detected`);
+      throw new Error('Request timed out while fetching verse. Please try again.');
+    }
+    
+    // Handle other errors
+    const errorMessage = error.response?.data?.error || error.message || 'Unknown error occurred';
+    console.error(`[JW.org API] Throwing error: ${errorMessage}`);
+    throw new Error(`Failed to fetch verse: ${errorMessage}`);
+  } finally {
+    console.log(`[JW.org API] Operation completed in ${(Date.now() - startTime) / 1000} seconds`);
   }
 }
 
