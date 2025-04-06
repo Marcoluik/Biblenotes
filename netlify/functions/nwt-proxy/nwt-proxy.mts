@@ -185,27 +185,48 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
   console.log(`[NWT Proxy Fn] Constructed URL: ${url}`);
 
   // --- Fetch and Parse ---
+  let responseData: any; // To store the JSON data from the fetch response
   try {
-    console.log(`[NWT Proxy Fn] Starting fetch request at ${new Date().toISOString()}`);
+    console.log(`[NWT Proxy Fn] Starting fetch request using native fetch at ${new Date().toISOString()}`);
     const fetchStartTime = Date.now();
     
-    // Use a simpler approach with direct axios call
-    const response = await axios.get(url, {
-      timeout: 15000, // 15 seconds timeout
+    // Use native fetch with AbortController for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+        console.log(`[NWT Proxy Fn] Aborting fetch due to 15s timeout`);
+        controller.abort();
+    }, 15000); // 15 seconds timeout
+
+    const response = await fetch(url, {
+      signal: controller.signal, // Link the controller
       headers: { 
-        'Accept': 'application/json, text/plain, */*',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' 
+        'Accept': 'application/json, text/plain, */*', // Keep Accept header
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' // Keep User-Agent
+        // Note: fetch might add slightly different default headers than axios (e.g., Accept-Encoding)
       }
     });
-    
+
+    // Clear the timeout timer if the fetch completes or fails before 15s
+    clearTimeout(timeoutId);
+
     const fetchDuration = (Date.now() - fetchStartTime) / 1000;
     console.log(`[NWT Proxy Fn] Fetch completed in ${fetchDuration} seconds`);
-    console.log(`[NWT Proxy Fn] Response status for ${verseId} (${lang}): ${response.status}`);
+    console.log(`[NWT Proxy Fn] Response status for ${verseId} (${lang}): ${response.status} (${response.statusText})`);
+
+    if (!response.ok) { // Check if status code is 2xx
+        // Try to get error details from the response body if possible
+        let errorBody = await response.text().catch(() => 'Could not read error body');
+        console.error(`[NWT Proxy Fn] Fetch failed with status ${response.status}. Body: ${errorBody.substring(0, 500)}`); // Log first 500 chars
+        throw new Error(`Fetch failed with status ${response.status}`); // Throw a generic error
+    }
+
+    // Parse the JSON response body
+    responseData = await response.json();
     
-    // Check response and parse
-    if (response.status === 200 && response.data?.ranges?.[verseId]) {
+    // Check response structure and parse (similar logic as before)
+    if (responseData?.ranges?.[verseId]) {
         console.log(`[NWT Proxy Fn] Successfully received data for verse ${verseId}`);
-        const verseData = response.data.ranges[verseId];
+        const verseData = responseData.ranges[verseId];
         // Prefer verses[0].content if available, fallback to html
         const htmlContent = verseData.verses?.[0]?.content ?? verseData.html; 
         console.log(`[NWT Proxy Fn] HTML content length: ${htmlContent?.length || 0} characters`);
@@ -238,7 +259,7 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
              };
         }
     } else {
-        console.error(`[NWT Proxy Fn] Verse ${verseId} (${lang}) not found or invalid response structure:`, response.data);
+        console.error(`[NWT Proxy Fn] Verse ${verseId} (${lang}) not found or invalid response structure:`, responseData);
         console.log(`[NWT Proxy Fn] Function completed with error in ${(Date.now() - startTime) / 1000} seconds`);
         return { 
           statusCode: 404, 
@@ -247,18 +268,11 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
         };
     }
   } catch (error: any) {
-      console.error(`[NWT Proxy Fn] Error fetching verse ${verseId} (${lang}):`, error);
-      console.error(`[NWT Proxy Fn] Error details:`, {
-        message: error.message,
-        code: error.code,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: error.response?.data
-      });
+      console.error(`[NWT Proxy Fn] Error during fetch/parse for ${verseId} (${lang}):`, error);
       
-      // Handle timeout specifically
-      if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
-        console.log(`[NWT Proxy Fn] Timeout error detected, returning 504 status`);
+      // Handle timeout specifically (AbortError from AbortController)
+      if (error.name === 'AbortError') {
+        console.log(`[NWT Proxy Fn] Fetch timed out (15s), returning 504 status`);
         console.log(`[NWT Proxy Fn] Function completed with timeout in ${(Date.now() - startTime) / 1000} seconds`);
         return {
           statusCode: 504, // Gateway Timeout
@@ -270,14 +284,20 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
         };
       }
       
-      const statusCode = error.response?.status || 502; // 502 Bad Gateway is a common proxy error status
-      const message = error.message || 'Unknown server error';
+      // Handle other potential fetch errors (network errors, JSON parsing errors, etc.)
+      const statusCode = 502; // Treat most other fetch errors as Bad Gateway
+      const message = error.message || 'Unknown fetch/processing error';
+      console.error(`[NWT Proxy Fn] Other error details:`, { // Log more generic details
+        message: error.message,
+        name: error.name, 
+        cause: error.cause 
+      });
       // Return Netlify Function error response
       console.log(`[NWT Proxy Fn] Function completed with error in ${(Date.now() - startTime) / 1000} seconds`);
       return {
           statusCode: statusCode,
           headers: corsHeaders,
-          body: JSON.stringify({ error: `Proxy error fetching from source (${lang}): ${message}` }),
+          body: JSON.stringify({ error: `Proxy error fetching/processing from source (${lang}): ${message}` }),
       };
   }
 };
