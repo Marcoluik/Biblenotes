@@ -197,11 +197,20 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
         controller.abort();
     }, 15000); // 15 seconds timeout
 
+    // Determine Accept-Language based on lang
+    const acceptLanguage = lang === 'da' 
+        ? 'da-DK,da;q=0.9,en;q=0.8' 
+        : 'en-US,en;q=0.9';
+
+    console.log(`[NWT Proxy Fn] Using headers: Accept-Language: ${acceptLanguage}, Referer: https://www.jw.org/`);
+
     const response = await fetch(url, {
       signal: controller.signal, // Link the controller
       headers: { 
         'Accept': 'application/json, text/plain, */*', // Keep Accept header
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' // Keep User-Agent
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36', // Keep User-Agent
+        'Accept-Language': acceptLanguage, // Add Accept-Language
+        'Referer': 'https://www.jw.org/' // Add Referer
         // Note: fetch might add slightly different default headers than axios (e.g., Accept-Encoding)
       }
     });
