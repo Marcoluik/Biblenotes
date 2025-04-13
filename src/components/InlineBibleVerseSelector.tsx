@@ -118,15 +118,20 @@ export const InlineBibleVerseSelector: React.FC<InlineBibleVerseSelectorProps> =
           
           const localResult: LocalVerseResult = await fetchVerseLocally(parsedRef, language);
           
-          const { text, matchedBookName, requestedChapter, requestedVerse } = localResult;
+          const { text, matchedBookName, requestedChapter, requestedVerse, requestedEndVerse } = localResult;
           
           let displayReference = `${matchedBookName} ${requestedChapter}:${requestedVerse}`;
-          if (partialMatchBookName) {
-              console.log(`[Selector] Original input "${searchTerm}" resulted in partial match: ${matchedBookName} ${requestedChapter}:${requestedVerse}`);
+          if (requestedEndVerse) {
+              displayReference += `-${requestedEndVerse}`;
+              console.log(`[Selector] Local fetch returned a range: ${displayReference}`);
+          } else if (partialMatchBookName) {
+              console.log(`[Selector] Original input "${searchTerm}" resulted in partial match default: ${displayReference}`);
+          } else {
+              console.log(`[Selector] Local fetch returned single verse: ${displayReference}`);
           }
                     
           const resultVerse: BibleVerse = {
-              id: `${language}-${matchedBookName}-${requestedChapter}-${requestedVerse}`,
+              id: `${language}-${matchedBookName}-${requestedChapter}-${requestedVerse}${requestedEndVerse ? '-' + requestedEndVerse : ''}`,
               reference: displayReference,
               content: text,
               text: text,
@@ -235,13 +240,13 @@ export const InlineBibleVerseSelector: React.FC<InlineBibleVerseSelectorProps> =
                                         localInputBookName;
               
               let displayReference = verse.reference;
-              if (isLocalCorrection && verse.reference.startsWith(localMatchedBookName)) {
+              if (isLocalCorrection && localMatchedBookName && verse.reference.startsWith(localMatchedBookName)) {
                 const versePartMatch = verse.reference.substring(localMatchedBookName.length).trim();
                 displayReference = `${localInputBookName} (${localMatchedBookName}) ${versePartMatch}`.trim();
-                 console.log(`[Selector Render] Corrected display ref: "${displayReference}"`);
+                 console.log(`[Selector Render] Corrected display ref for fuzzy match: "${displayReference}"`);
               }
               
-              console.log(`[Selector Render] Mapping verse: ${verse.id}, DisplayRef: ${displayReference}, isLocalCorrection: ${isLocalCorrection}`);
+              console.log(`[Selector Render] Mapping verse: ${verse.id}, Final DisplayRef: ${displayReference}, isLocalCorrection: ${isLocalCorrection}`);
 
               return (
                 <div
@@ -267,7 +272,7 @@ export const InlineBibleVerseSelector: React.FC<InlineBibleVerseSelectorProps> =
         ) : !loading && verses.length === 0 && searchTerm.length >= 3 ? (
            <div className="text-center py-4 text-gray-500">
              {(() => { console.log('[Selector Render] Rendering no results/prompt message.'); return null; })()}
-             {shouldUseLocalSource(bibleId) && !parseReference(searchTerm)
+             {shouldUseLocalSource(bibleId) && !parseReference(searchTerm, getLanguageFromBibleId(bibleId))
                ? "Type an exact reference (e.g., John 3:16 or 1 Mos 1:1)" 
                : "No results found."}
            </div>

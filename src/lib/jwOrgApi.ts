@@ -241,110 +241,136 @@ export interface LocalVerseResult {
   matchedBookName: string; // The canonical book name found
   matchedBookNumber: number; // The book number found
   requestedChapter: number; // The chapter used for the lookup (might be defaulted)
-  requestedVerse: number; // The verse used for the lookup (might be defaulted)
+  requestedVerse: number; // The starting verse used for the lookup (might be defaulted)
+  requestedEndVerse?: number; // The ending verse of the range, if applicable
 }
 
 /**
- * Fetches a SINGLE Bible verse from the local JSON data.
+ * Fetches a SINGLE Bible verse or a RANGE of verses from the local JSON data.
  * Handles partial references (book name only) by defaulting to Chapter 1, Verse 1.
+ * Handles ranges like "Book C:V-V".
  *
- * @param parsedRef The result from parseReference (can be partial).
+ * @param parsedRef The result from parseReference (can be partial, can contain endVerse).
  * @param lang The language identifier (e.g., 'en', 'da').
- * @returns The verse text and details about the match.
+ * @returns The verse text(s) and details about the match.
  */
 export async function fetchVerseLocally(parsedRef: ParsedReference, lang: SupportedLanguage): Promise<LocalVerseResult> {
   const startTime = Date.now();
   console.log(`[JW.org API - Local] Starting fetch for parsedRef:`, parsedRef, `, lang: "${lang}" at ${new Date().toISOString()}`);
 
   // 1. Validate Parsed Reference Input
-  if (!parsedRef || parsedRef.bookNumber === null) { // We absolutely need a book number now
+  if (!parsedRef || parsedRef.bookNumber === null) {
     console.error(`[JW.org API - Local] Invalid parsedRef provided to fetchVerseLocally: bookNumber is null. Ref:`, parsedRef);
     throw new Error(`Cannot fetch locally without a valid book identified.`);
   }
+  // We also need chapter and startVerse, even if defaulted later
+  if (parsedRef.chapter === null || parsedRef.startVerse === null) {
+      console.log(`[JW.org API - Local] Partial reference (book only) detected. Defaulting to chapter 1, verse 1.`);
+  }
+  
+  // 2. Determine Chapter and Verse(s)
+  const { bookNumber, bookName } = parsedRef; // bookNumber is guaranteed non-null here
+  const chapterToFetch = parsedRef.chapter ?? 1; 
+  const startVerseToFetch = parsedRef.startVerse ?? 1; 
+  const endVerseToFetch = parsedRef.endVerse; // Might be undefined
 
-  // Check for verse range - currently only fetches the start verse
-  if (parsedRef.endVerse && parsedRef.startVerse && parsedRef.endVerse !== parsedRef.startVerse) {
-    console.warn(`[JW.org API - Local] Range detected (${parsedRef.bookName} ${parsedRef.chapter}:${parsedRef.startVerse}-${parsedRef.endVerse}), fetching only start verse ${parsedRef.startVerse}.`);
-    // TODO: Add logic here to fetch multiple verses if range handling is desired
+  // Determine if it's a range query
+  const isRange = endVerseToFetch !== undefined && endVerseToFetch > startVerseToFetch;
+  
+  console.log(`[JW.org API - Local] Using Book: "${bookName}" (#${bookNumber}), Chapter: ${chapterToFetch}, StartVerse: ${startVerseToFetch}${isRange ? ", EndVerse: " + endVerseToFetch : ""}`);
+
+  // 3. Fetch from Cache/Network (Load data if needed)
+  // Ensure data is loaded before proceeding
+  if (!verseDataCache[lang] && !isLoadingCache[lang]) {
+    isLoadingCache[lang] = true;
+    const filePath = `/verse-data/${lang}.json`;
+    console.log(`[JW.org API - Local] Cache miss for ${lang}. Fetching ${filePath}...`);
+    try {
+        const response = await fetch(filePath);
+        if (!response.ok) {
+            throw new Error(`Failed to load verse data file (${filePath}): ${response.status} ${response.statusText}`);
+        }
+        const data = await response.json();
+        console.log(`[JW.org API - Local] Successfully fetched and parsed ${filePath}. Caching ${Object.keys(data).length} verses.`);
+        verseDataCache[lang] = data;
+    } catch (fetchError) {
+        console.error(`[JW.org API - Local] Error fetching or parsing ${filePath}:`, fetchError);
+        verseDataCache[lang] = null; 
+        throw fetchError; 
+    } finally {
+         isLoadingCache[lang] = false;
+    }
+  } else if (isLoadingCache[lang]) {
+      console.log(`[JW.org API - Local] Waiting for ongoing fetch for ${lang}...`);
+      await new Promise<void>(resolve => {
+          const interval = setInterval(() => {
+              if (!isLoadingCache[lang]) {
+                  clearInterval(interval);
+                  resolve();
+              }
+          }, 100); 
+      });
+       console.log(`[JW.org API - Local] Ongoing fetch for ${lang} completed.`);
   }
 
-  // 2. Determine Chapter and Verse (Default if necessary)
-  const chapterToFetch = parsedRef.chapter ?? 1; // Default to chapter 1 if null
-  const verseToFetch = parsedRef.startVerse ?? 1; // Default to verse 1 if null
+  const cachedVerseData = verseDataCache[lang];
+  if (!cachedVerseData) {
+       throw new Error(`Verse data for language '${lang}' is not available after fetch attempt.`);
+  }
 
-  console.log(`[JW.org API - Local] Using Book: "${parsedRef.bookName}" (#${parsedRef.bookNumber}), Chapter: ${chapterToFetch} (original: ${parsedRef.chapter}), Verse: ${verseToFetch} (original: ${parsedRef.startVerse})`);
+  // 4. Generate Verse ID(s) and Fetch Text(s)
+  let combinedVerseText = '';
+  const versesFound: string[] = [];
+  let firstVerseId = '';
 
-  // 3. Create Verse ID
-  // We already have the bookNumber from the parsedRef passed in
-  const { bookNumber } = parsedRef; // Type assertion is safe due to check above
-  const verseId = createVerseId(bookNumber, chapterToFetch, verseToFetch);
-  console.log(`[JW.org API - Local] Calculated Verse ID: ${verseId}`);
-
-  // 4. Fetch from Cache/Network
   try {
-    // --- Cache handling logic (remains the same) ---
-    if (!verseDataCache[lang] && !isLoadingCache[lang]) {
-        isLoadingCache[lang] = true;
-        const filePath = `/verse-data/${lang}.json`;
-        console.log(`[JW.org API - Local] Cache miss for ${lang}. Fetching ${filePath}...`);
-        try {
-            const response = await fetch(filePath); // Use standard fetch for public assets
-            if (!response.ok) {
-                throw new Error(`Failed to load verse data file (${filePath}): ${response.status} ${response.statusText}`);
-            }
-            const data = await response.json();
-            console.log(`[JW.org API - Local] Successfully fetched and parsed ${filePath}. Caching ${Object.keys(data).length} verses.`);
-            verseDataCache[lang] = data;
-        } catch (fetchError) {
-            console.error(`[JW.org API - Local] Error fetching or parsing ${filePath}:`, fetchError);
-            verseDataCache[lang] = null; // Ensure cache is null on error
-            throw fetchError; // Rethrow to signal failure
-        } finally {
-             isLoadingCache[lang] = false;
+    if (isRange && endVerseToFetch) { // Handle range
+      console.log(`[JW.org API - Local] Fetching range: ${startVerseToFetch} - ${endVerseToFetch}`);
+      for (let v = startVerseToFetch; v <= endVerseToFetch; v++) {
+        const verseId = createVerseId(bookNumber, chapterToFetch, v);
+        if (!firstVerseId) firstVerseId = verseId; // Store first ID for logging
+        const verseText = cachedVerseData[verseId];
+        if (verseText !== undefined) {
+          versesFound.push(verseText);
+        } else {
+          console.warn(`[JW.org API - Local] Verse ID "${verseId}" (part of range) not found in ${lang} data for reference: ${bookName} ${chapterToFetch}:${v}`);
+          // Optionally, insert a placeholder or skip
+          // versesFound.push(`[Verse ${v} not found]`); 
         }
-    } else if (isLoadingCache[lang]) {
-        console.log(`[JW.org API - Local] Waiting for ongoing fetch for ${lang}...`);
-        // Simple wait loop (consider a more robust promise-based approach for production)
-        await new Promise<void>(resolve => {
-            const interval = setInterval(() => {
-                if (!isLoadingCache[lang]) {
-                    clearInterval(interval);
-                    resolve();
-                }
-            }, 100); // Check every 100ms
-        });
-         console.log(`[JW.org API - Local] Ongoing fetch for ${lang} completed.`);
-    }
-    // --- End Cache handling ---
+      }
+      combinedVerseText = versesFound.join(' '); // Join verses with a space
+      if (versesFound.length === 0) {
+          throw new Error(`None of the verses in the range ${startVerseToFetch}-${endVerseToFetch} were found for book '${bookName}' chapter ${chapterToFetch} in the ${lang} data.`);
+      }
 
-    const cachedVerseData = verseDataCache[lang];
-    if (!cachedVerseData) {
-        // This should ideally not happen if the cache loading logic is correct
-         throw new Error(`Verse data for language '${lang}' is not available after fetch attempt.`);
+    } else { // Handle single verse
+      const verseId = createVerseId(bookNumber, chapterToFetch, startVerseToFetch);
+      firstVerseId = verseId;
+      const verseText = cachedVerseData[verseId];
+      if (verseText === undefined) {
+        console.error(`[JW.org API - Local] Verse ID "${verseId}" not found in ${lang} data for reference: ${bookName} ${chapterToFetch}:${startVerseToFetch}`);
+        throw new Error(`Verse ${chapterToFetch}:${startVerseToFetch} not found for book '${bookName}' in the ${lang} data.`);
+      }
+      combinedVerseText = verseText;
     }
 
-    const verseText = cachedVerseData[verseId];
-
-    if (verseText === undefined) { // Check for undefined, as empty string might be valid?
-        console.error(`[JW.org API - Local] Verse ID "${verseId}" not found in ${lang} data for reference: ${parsedRef.bookName} ${chapterToFetch}:${verseToFetch}`);
-        throw new Error(`Verse ${chapterToFetch}:${verseToFetch} not found for book '${parsedRef.bookName}' in the ${lang} data.`);
-    }
-
-    console.log(`[JW.org API - Local] Found verse text for ID ${verseId} (${verseText.length} chars)`);
+    console.log(`[JW.org API - Local] Found text for ID(s) starting with ${firstVerseId} (${combinedVerseText.length} chars)`);
     const endTime = Date.now();
     console.log(`[JW.org API - Local] Fetch operation took ${(endTime - startTime) / 1000} seconds.`);
 
+    // 5. Return Result
     return {
-      text: verseText,
-      matchedBookName: parsedRef.bookName, // Use the canonical name from parsing
+      text: combinedVerseText,
+      matchedBookName: bookName,
       matchedBookNumber: bookNumber,
       requestedChapter: chapterToFetch,
-      requestedVerse: verseToFetch,
+      requestedVerse: startVerseToFetch,
+      // Include end verse only if it was a valid range
+      requestedEndVerse: isRange ? endVerseToFetch : undefined, 
     };
 
   } catch (error: any) {
-    console.error(`[JW.org API - Local] Error during local fetch for ${verseId}:`, error);
-    // Rethrow or handle specific errors as needed
+    console.error(`[JW.org API - Local] Error during local fetch for ${bookName} ${chapterToFetch}:${startVerseToFetch}${isRange ? '-'+endVerseToFetch : ''}:`, error);
     throw new Error(`Failed to fetch verse locally: ${error.message || 'Unknown error'}`);
   }
 }
