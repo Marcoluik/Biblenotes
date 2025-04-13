@@ -21,4 +21,7 @@ export interface BibleVerse {
   content: string;
   text?: string;
   reference: string;
-} 
+}
+
+// Re-export types from other files within the types directory
+export * from './bible'; 

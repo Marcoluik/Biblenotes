@@ -1,43 +1,156 @@
 import axios from 'axios';
+import { bookNameToNumberMap, SupportedLanguage } from './constants'; // Import the structured map
+import { ParsedReference } from '../types/bible'; // Import the type
 
 // --- START: Helpers for NWT Local JSON --- 
-// Copied from server.js / nwt-proxy.mts
+// Removed bookNameToNumberMap from here
 
-const bookNameToNumberMap: { [key: string]: number } = {
-  'genesis': 1, 'gen': 1, 'ge': 1, 'exodus': 2, 'ex': 2, 'leviticus': 3, 'lev': 3, 'le': 3, 'numbers': 4, 'num': 4, 'nu': 4,
-  'deuteronomy': 5, 'deut': 5, 'de': 5, 'joshua': 6, 'josh': 6, 'jos': 6, 'judges': 7, 'judg': 7, 'jg': 7, 'ruth': 8, 'ru': 8,
-  '1 samuel': 9, '1 sam': 9, '1sa': 9, '2 samuel': 10, '2 sam': 10, '2sa': 10, '1 kings': 11, '1 kgs': 11, '1ki': 11,
-  '2 kings': 12, '2 kgs': 12, '2ki': 12, '1 chronicles': 13, '1 chron': 13, '1ch': 13, '2 chronicles': 14, '2 chron': 14, '2ch': 14,
-  'ezra': 15, 'ezr': 15, 'nehemiah': 16, 'neh': 16, 'esther': 17, 'esth': 17, 'es': 17, 'job': 18, 'jb': 18,
-  'psalms': 19, 'psalm': 19, 'ps': 19, 'proverbs': 20, 'prov': 20, 'pr': 20, 'ecclesiastes': 21, 'eccl': 21, 'ec': 21,
-  'song of solomon': 22, 'song of sol': 22, 'sos': 22, 'song': 22, 'isaiah': 23, 'isa': 23, 'jeremiah': 24, 'jer': 24,
-  'lamentations': 25, 'lam': 25, 'ezekiel': 26, 'ezek': 26, 'eze': 26, 'daniel': 27, 'dan': 27, 'da': 27, 'hosea': 28, 'hos': 28,
-  'joel': 29, 'jl': 29, 'amos': 30, 'am': 30, 'obadiah': 31, 'obad': 31, 'ob': 31, 'jonah': 32, 'jon': 32, 'micah': 33, 'mic': 33,
-  'nahum': 34, 'nah': 34, 'na': 34, 'habakkuk': 35, 'hab': 35, 'zephaniah': 36, 'zeph': 36, 'zep': 36, 'haggai': 37, 'hag': 37,
-  'zechariah': 38, 'zech': 38, 'zec': 38, 'malachi': 39, 'mal': 39, 'matthew': 40, 'matt': 40, 'mt': 40, 'mark': 41, 'mrk': 41, 'mk': 41,
-  'luke': 42, 'lk': 42, 'john': 43, 'joh': 43, 'jhn': 43, 'acts': 44, 'act': 44, 'romans': 45, 'rom': 45, 'ro': 45,
-  '1 corinthians': 46, '1 cor': 46, '1co': 46, '2 corinthians': 47, '2 cor': 47, '2co': 47, 'galatians': 48, 'gal': 48,
-  'ephesians': 49, 'eph': 49, 'philippians': 50, 'phil': 50, 'php': 50, 'colossians': 51, 'col': 51,
-  '1 thessalonians': 52, '1 thess': 52, '1th': 52, '2 thessalonians': 53, '2 thess': 53, '2th': 53,
-  '1 timothy': 54, '1 tim': 54, '1ti': 54, '2 timothy': 55, '2 tim': 55, '2ti': 55, 'titus': 56, 'tit': 56,
-  'philemon': 57, 'philem': 57, 'phm': 57, 'hebrews': 58, 'heb': 58, 'james': 59, 'jas': 59, 'jmp': 59,
-  '1 peter': 60, '1 pet': 60, '1pe': 60, '2 peter': 61, '2 pet': 61, '2pe': 61, '1 john': 62, '1 joh': 62, '1jn': 62,
-  '2 john': 63, '2 joh': 63, '2jn': 63, '3 john': 64, '3 joh': 64, '3jn': 64, 'jude': 65, 'jud': 65,
-  'revelation': 66, 'rev': 66, 're': 66,
-};
-    
-function parseReference(reference: string | undefined): { bookName: string; chapter: number; startVerse: number; endVerse?: number } | null {
+// --- Levenshtein Distance Calculation --- 
+// (Standard dynamic programming implementation)
+function calculateLevenshteinDistance(s1: string, s2: string): number {
+  const len1 = s1.length;
+  const len2 = s2.length;
+  const dp: number[][] = Array(len1 + 1).fill(0).map(() => Array(len2 + 1).fill(0));
+
+  for (let i = 0; i <= len1; i++) dp[i][0] = i;
+  for (let j = 0; j <= len2; j++) dp[0][j] = j;
+
+  for (let i = 1; i <= len1; i++) {
+    for (let j = 1; j <= len2; j++) {
+      const cost = s1[i - 1] === s2[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,      // Deletion
+        dp[i][j - 1] + 1,      // Insertion
+        dp[i - 1][j - 1] + cost // Substitution
+      );
+    }
+  }
+  return dp[len1][len2];
+}
+
+// --- Helper to find closest book name match --- 
+const FUZZY_MATCH_THRESHOLD = 2; // Max distance allowed for a match (e.g., 2 allows two typos)
+
+/**
+ * Internal helper to find the closest book match based on Levenshtein distance.
+ */
+function findClosestBookMatchHelper(inputName: string, langMap: { [key: string]: number }): { bookName: string; bookNumber: number } | null {
+    let bestMatch: { bookName: string; bookNumber: number } | null = null;
+    let minDistance = Infinity;
+    const lowerInputName = inputName.toLowerCase().trim(); // Compare case-insensitively and trimmed
+
+    if (!lowerInputName) return null; // Don't match empty strings
+
+    for (const knownName in langMap) {
+        const lowerKnownName = knownName.toLowerCase();
+        const distance = calculateLevenshteinDistance(lowerInputName, lowerKnownName);
+
+        if (distance < minDistance) {
+            minDistance = distance;
+            bestMatch = { bookName: knownName, bookNumber: langMap[knownName] };
+        }
+
+        // Optimization: Exact match found, no need to search further
+        if (distance === 0) {
+            break;
+        }
+    }
+
+    // Only return if the best match is within the threshold
+    if (bestMatch && minDistance <= FUZZY_MATCH_THRESHOLD) {
+        console.log(`[FuzzyMatchHelper] Found close match for "${inputName}" (normalized: "${lowerInputName}"): "${bestMatch.bookName}" (Distance: ${minDistance})`);
+        return bestMatch;
+    }
+
+    console.log(`[FuzzyMatchHelper] No close match found for "${inputName}" (normalized: "${lowerInputName}") within threshold ${FUZZY_MATCH_THRESHOLD}. Min distance was ${minDistance}.`);
+    return null;
+}
+
+/**
+ * Finds the canonical book name and number for a given potential book name using fuzzy matching.
+ * @param potentialBookName The user-input string that might be a book name.
+ * @param lang The language to check against.
+ * @returns The matched book name and number, or null if no close match is found.
+ */
+export function findCanonicalBookName(potentialBookName: string, lang: SupportedLanguage): { bookName: string; bookNumber: number } | null {
+    const langMap = bookNameToNumberMap[lang];
+    if (!langMap) {
+        console.error(`[findCanonicalBookName] No book name map found for language: ${lang}`);
+        return null;
+    }
+    return findClosestBookMatchHelper(potentialBookName, langMap);
+}
+
+/**
+ * Parses a Bible reference string.
+ * Attempts to match "Book Chapter:Verse" format first.
+ * If that fails, attempts to find a book name using fuzzy matching.
+ * @param reference The input string.
+ * @param lang The language required for fuzzy book name matching if needed.
+ * @returns A ParsedReference object (potentially partial if only book name is matched), or null if parsing fails.
+ */
+export function parseReference(reference: string | undefined, lang: SupportedLanguage): ParsedReference | null {
   if (!reference) return null;
-  reference = reference.trim().toLowerCase();
-  // Basic regex, might need refinement for edge cases
-  const match = reference.match(/^([1-3]?\s?[a-z]+(?:\s+[a-z]+)*)\s?(\d+):(\d+)(?:-(\d+))?$/);
-  if (!match) return null;
-  const bookName = match[1].trim();
-  const chapter = parseInt(match[2], 10);
-  const startVerse = parseInt(match[3], 10);
-  const endVerse = match[4] ? parseInt(match[4], 10) : undefined;
-  if (isNaN(chapter) || isNaN(startVerse) || (endVerse !== undefined && isNaN(endVerse))) return null;
-  return { bookName, chapter, startVerse, endVerse };
+  const trimmedRef = reference.trim(); // Trim upfront
+
+  // 1. Try parsing "Book Chapter:Verse" (or similar patterns)
+  // Regex adjusted slightly: allows more flexible spacing, optional period/colon, case-insensitive book name start
+  const fullRefMatch = trimmedRef.match(/^([1-3]?\s?[a-zæøå]+(?:[\s.-]?[a-zæøå]+)*)\s?[. ]?(\d+)[:.](\d+)(?:-(\d+))?$/i);
+
+  if (fullRefMatch) {
+    const bookNameInput = fullRefMatch[1].trim();
+    const chapter = parseInt(fullRefMatch[2], 10);
+    const startVerse = parseInt(fullRefMatch[3], 10);
+    const endVerse = fullRefMatch[4] ? parseInt(fullRefMatch[4], 10) : undefined;
+
+    if (isNaN(chapter) || isNaN(startVerse) || (endVerse !== undefined && isNaN(endVerse))) {
+        console.warn(`[parseReference] Invalid numbers in full reference match: "${trimmedRef}"`);
+        return null;
+    }
+
+    // Now, perform fuzzy matching *on the extracted book name part*
+    const matchedBook = findCanonicalBookName(bookNameInput, lang);
+    if (!matchedBook) {
+        console.warn(`[parseReference] Could not fuzzy match book name "${bookNameInput}" from full reference "${trimmedRef}"`);
+        return null; // Book name part couldn't be matched even though format was okay
+    }
+
+    console.log(`[parseReference] Parsed full reference: Book="${matchedBook.bookName}" (#${matchedBook.bookNumber}), C=${chapter}, V=${startVerse}${endVerse ? '-' + endVerse : ''}`);
+    return {
+        bookName: matchedBook.bookName, // Use the canonical matched name
+        bookNumber: matchedBook.bookNumber,
+        chapter: chapter,
+        startVerse: startVerse,
+        endVerse: endVerse
+    };
+  }
+
+  // 2. If full parsing failed, check if the input might be *just* a book name
+  // Basic check: contains no digits or typical separators like : . -
+  const potentialBookOnly = !/[\d:.-]/.test(trimmedRef);
+
+  if (potentialBookOnly) {
+      console.log(`[parseReference] Input "${trimmedRef}" doesn't match full format, attempting book-only fuzzy match.`);
+      const matchedBook = findCanonicalBookName(trimmedRef, lang);
+
+      if (matchedBook) {
+          console.log(`[parseReference] Found book-only fuzzy match: "${matchedBook.bookName}" (#${matchedBook.bookNumber})`);
+          // Return a partial reference
+          return {
+              bookName: matchedBook.bookName,
+              bookNumber: matchedBook.bookNumber,
+              chapter: null,      // Indicate chapter is missing
+              startVerse: null,   // Indicate verse is missing
+              endVerse: undefined // No end verse either
+          };
+      } else {
+           console.log(`[parseReference] Book-only fuzzy match failed for "${trimmedRef}"`);
+      }
+  }
+
+  // 3. If neither worked, parsing fails
+  console.warn(`[parseReference] Could not parse input as full reference or book name: "${reference}"`);
+  return null;
 }
 
 function createVerseId(bookNumber: number, chapter: number, verse: number): string {
@@ -121,43 +234,61 @@ export async function fetchVerseFromJwOrg(reference: string, bibleId: string = '
   }
 }
 
+// --- Updated fetchVerseLocally using Fuzzy Matching --- 
+// Define the return type for fetchVerseLocally
+export interface LocalVerseResult {
+  text: string;
+  matchedBookName: string; // The canonical book name found
+  matchedBookNumber: number; // The book number found
+  requestedChapter: number; // The chapter used for the lookup (might be defaulted)
+  requestedVerse: number; // The verse used for the lookup (might be defaulted)
+}
 
 /**
- * Fetches a SINGLE Bible verse from the statically generated JSON file.
+ * Fetches a SINGLE Bible verse from the local JSON data.
+ * Handles partial references (book name only) by defaulting to Chapter 1, Verse 1.
  *
- * @param reference Standard Bible reference (e.g., "John 3:16")
- * @param lang Language code ('en' or 'da') to determine which JSON file to use.
- * @returns The verse text from the JSON file or throws an error.
+ * @param parsedRef The result from parseReference (can be partial).
+ * @param lang The language identifier (e.g., 'en', 'da').
+ * @returns The verse text and details about the match.
  */
-export async function fetchVerseLocally(reference: string, lang: 'en' | 'da'): Promise<string> {
+export async function fetchVerseLocally(parsedRef: ParsedReference, lang: SupportedLanguage): Promise<LocalVerseResult> {
   const startTime = Date.now();
-  console.log(`[JW.org API - Local] Starting fetch for reference: "${reference}", lang: "${lang}" at ${new Date().toISOString()}`);
+  console.log(`[JW.org API - Local] Starting fetch for parsedRef:`, parsedRef, `, lang: "${lang}" at ${new Date().toISOString()}`);
 
-  // 1. Parse Reference to get verseId
-  const parsedRef = parseReference(reference);
-  if (!parsedRef) {
-    console.error(`[JW.org API - Local] Could not parse reference: ${reference}`);
-    throw new Error(`Could not parse reference: ${reference}`);
+  // 1. Validate Parsed Reference Input
+  if (!parsedRef || parsedRef.bookNumber === null) { // We absolutely need a book number now
+    console.error(`[JW.org API - Local] Invalid parsedRef provided to fetchVerseLocally: bookNumber is null. Ref:`, parsedRef);
+    throw new Error(`Cannot fetch locally without a valid book identified.`);
   }
-  if (parsedRef.endVerse && parsedRef.endVerse !== parsedRef.startVerse) {
-    console.warn(`[JW.org API - Local] Range detected (${reference}), fetching only start verse ${parsedRef.startVerse}.`);
+
+  // Check for verse range - currently only fetches the start verse
+  if (parsedRef.endVerse && parsedRef.startVerse && parsedRef.endVerse !== parsedRef.startVerse) {
+    console.warn(`[JW.org API - Local] Range detected (${parsedRef.bookName} ${parsedRef.chapter}:${parsedRef.startVerse}-${parsedRef.endVerse}), fetching only start verse ${parsedRef.startVerse}.`);
+    // TODO: Add logic here to fetch multiple verses if range handling is desired
   }
-  const bookNumber = bookNameToNumberMap[parsedRef.bookName];
-  if (bookNumber === undefined) {
-      console.error(`[JW.org API - Local] Book not found in mapping: ${parsedRef.bookName}`);
-      throw new Error(`Book not found in mapping: ${parsedRef.bookName}`);
-  }
-  const verseId = createVerseId(bookNumber, parsedRef.chapter, parsedRef.startVerse);
+
+  // 2. Determine Chapter and Verse (Default if necessary)
+  const chapterToFetch = parsedRef.chapter ?? 1; // Default to chapter 1 if null
+  const verseToFetch = parsedRef.startVerse ?? 1; // Default to verse 1 if null
+
+  console.log(`[JW.org API - Local] Using Book: "${parsedRef.bookName}" (#${parsedRef.bookNumber}), Chapter: ${chapterToFetch} (original: ${parsedRef.chapter}), Verse: ${verseToFetch} (original: ${parsedRef.startVerse})`);
+
+  // 3. Create Verse ID
+  // We already have the bookNumber from the parsedRef passed in
+  const { bookNumber } = parsedRef; // Type assertion is safe due to check above
+  const verseId = createVerseId(bookNumber, chapterToFetch, verseToFetch);
   console.log(`[JW.org API - Local] Calculated Verse ID: ${verseId}`);
 
+  // 4. Fetch from Cache/Network
   try {
-    // 2. Check Cache / Fetch JSON Data if needed
+    // --- Cache handling logic (remains the same) ---
     if (!verseDataCache[lang] && !isLoadingCache[lang]) {
         isLoadingCache[lang] = true;
         const filePath = `/verse-data/${lang}.json`;
         console.log(`[JW.org API - Local] Cache miss for ${lang}. Fetching ${filePath}...`);
         try {
-            const response = await fetch(filePath);
+            const response = await fetch(filePath); // Use standard fetch for public assets
             if (!response.ok) {
                 throw new Error(`Failed to load verse data file (${filePath}): ${response.status} ${response.statusText}`);
             }
@@ -166,15 +297,14 @@ export async function fetchVerseLocally(reference: string, lang: 'en' | 'da'): P
             verseDataCache[lang] = data;
         } catch (fetchError) {
             console.error(`[JW.org API - Local] Error fetching or parsing ${filePath}:`, fetchError);
-            // Set cache back to null on error so the next attempt retries the fetch
-            verseDataCache[lang] = null; 
-            throw fetchError; // Re-throw to indicate failure
+            verseDataCache[lang] = null; // Ensure cache is null on error
+            throw fetchError; // Rethrow to signal failure
         } finally {
              isLoadingCache[lang] = false;
         }
     } else if (isLoadingCache[lang]) {
-        // Wait for ongoing fetch to complete (simple polling)
         console.log(`[JW.org API - Local] Waiting for ongoing fetch for ${lang}...`);
+        // Simple wait loop (consider a more robust promise-based approach for production)
         await new Promise<void>(resolve => {
             const interval = setInterval(() => {
                 if (!isLoadingCache[lang]) {
@@ -185,29 +315,37 @@ export async function fetchVerseLocally(reference: string, lang: 'en' | 'da'): P
         });
          console.log(`[JW.org API - Local] Ongoing fetch for ${lang} completed.`);
     }
+    // --- End Cache handling ---
 
-    // 3. Look up verse in (now populated) cache
     const cachedVerseData = verseDataCache[lang];
-    if (!cachedVerseData) { // Should ideally not happen if fetch logic is correct
+    if (!cachedVerseData) {
+        // This should ideally not happen if the cache loading logic is correct
          throw new Error(`Verse data for language '${lang}' is not available after fetch attempt.`);
     }
 
     const verseText = cachedVerseData[verseId];
 
-    if (verseText !== undefined && verseText !== null) {
-        console.log(`[JW.org API - Local] Found verse ${verseId} in ${lang} cache.`);
-        return verseText;
-    } else {
-        console.error(`[JW.org API - Local] Verse ID ${verseId} not found in loaded ${lang}.json data.`);
-        throw new Error(`Verse ${reference} (ID: ${verseId}) not found in local data.`);
+    if (verseText === undefined) { // Check for undefined, as empty string might be valid?
+        console.error(`[JW.org API - Local] Verse ID "${verseId}" not found in ${lang} data for reference: ${parsedRef.bookName} ${chapterToFetch}:${verseToFetch}`);
+        throw new Error(`Verse ${chapterToFetch}:${verseToFetch} not found for book '${parsedRef.bookName}' in the ${lang} data.`);
     }
 
+    console.log(`[JW.org API - Local] Found verse text for ID ${verseId} (${verseText.length} chars)`);
+    const endTime = Date.now();
+    console.log(`[JW.org API - Local] Fetch operation took ${(endTime - startTime) / 1000} seconds.`);
+
+    return {
+      text: verseText,
+      matchedBookName: parsedRef.bookName, // Use the canonical name from parsing
+      matchedBookNumber: bookNumber,
+      requestedChapter: chapterToFetch,
+      requestedVerse: verseToFetch,
+    };
+
   } catch (error: any) {
-    // Catch errors from parsing, file fetching, or lookup
-    console.error(`[JW.org API - Local] Error processing local verse ${reference} (${lang}):`, error);
-    throw new Error(`Failed to load local verse: ${error.message || 'Unknown error'}`);
-  } finally {
-    console.log(`[JW.org API - Local] Operation completed in ${(Date.now() - startTime) / 1000} seconds`);
+    console.error(`[JW.org API - Local] Error during local fetch for ${verseId}:`, error);
+    // Rethrow or handle specific errors as needed
+    throw new Error(`Failed to fetch verse locally: ${error.message || 'Unknown error'}`);
   }
 }
 
