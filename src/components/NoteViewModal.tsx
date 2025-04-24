@@ -44,7 +44,7 @@ export const NoteViewModal: React.FC<NoteViewModalProps> = ({ note, onClose, bib
                   return (
                     <ReactMarkdown 
                       key={`part-${partIndex}`}
-                      allowedElements={['strong', 'em', 'u', 'a', 'code', 'span', 'br', 'sub', 'sup', 'del']} // Allow common inline elements
+                      allowedElements={['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'strong', 'em', 'u', 'a', 'code', 'span', 'br', 'sub', 'sup', 'del']} // Allow headings and common inline elements
                       unwrapDisallowed={true} // Render content of disallowed elements directly
                     >
                       {part}

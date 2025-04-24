@@ -135,7 +135,17 @@ export const InlineBibleVerseSelector: React.FC<InlineBibleVerseSelectorProps> =
                 className={`p-2 mb-2 rounded cursor-pointer ${
                   selectedVerse?.id === verse.id ? 'bg-blue-100 border border-blue-300' : 'hover:bg-gray-100'
                 }`}
-                onClick={() => handleVerseSelect(verse)}
+                onClick={() => {
+                  if (verse.id.startsWith('bookmatch-')) {
+                    console.log('📚 Clicked book suggestion:', verse.reference);
+                    setSearchTerm(verse.reference + ' ');
+                    setSelectedVerse(null);
+                    setVerses([]);
+                    inputRef.current?.focus();
+                  } else {
+                    handleVerseSelect(verse);
+                  }
+                }}
               >
                 <div className="font-semibold">{verse.reference}</div>
                 <div className="text-sm text-gray-700">
