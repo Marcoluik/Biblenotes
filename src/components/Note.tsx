@@ -379,7 +379,8 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
         value={content}
         onChange={(e) => setContent(e.target.value)}
         onKeyDown={handleKeyDown}
-        className="w-full h-32 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="w-full h-[36rem] px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        placeholder="Write your note here..."
       />
     );
   };
@@ -468,10 +469,10 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
 
       {/* Edit Modal */}
       {isEditing && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-lg overflow-hidden shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col my-8">
             {/* Header */}
-            <div className="flex justify-between items-center p-4 border-b">
+            <div className="flex justify-between items-center p-4 border-b sticky top-0 bg-white z-10">
               <h2 className="text-xl font-bold text-gray-800">Edit Note</h2>
               <button
                 onClick={() => setIsEditing(false)}
@@ -485,7 +486,7 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
             </div>
             
             {/* Content */}
-            <div className="p-4 overflow-y-auto flex-grow">
+            <div className="p-4 overflow-y-auto flex-grow flex flex-col min-h-0">
               <input
                 type="text"
                 value={title}
@@ -537,7 +538,7 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 onKeyDown={handleKeyDown}
-                className="w-full h-64 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full h-[36rem] px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="Write your note here..."
               />
               
@@ -553,7 +554,7 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
             </div>
             
             {/* Footer */}
-            <div className="p-4 border-t flex justify-between items-center">
+            <div className="p-4 border-t flex justify-between items-center sticky bottom-0 bg-white z-10">
               <button
                 onClick={() => setIsEditing(false)}
                 className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100"
