@@ -1,38 +1,124 @@
 import axios from 'axios';
+import Fuse from 'fuse.js'; // Import Fuse.js
 
 // --- START: Helpers for NWT Local JSON --- 
 // Copied from server.js / nwt-proxy.mts
 
-const bookNameToNumberMap: { [key: string]: number } = {
-  'genesis': 1, 'gen': 1, 'ge': 1, 'exodus': 2, 'ex': 2, 'leviticus': 3, 'lev': 3, 'le': 3, 'numbers': 4, 'num': 4, 'nu': 4,
-  'deuteronomy': 5, 'deut': 5, 'de': 5, 'joshua': 6, 'josh': 6, 'jos': 6, 'judges': 7, 'judg': 7, 'jg': 7, 'ruth': 8, 'ru': 8,
-  '1 samuel': 9, '1 sam': 9, '1sa': 9, '2 samuel': 10, '2 sam': 10, '2sa': 10, '1 kings': 11, '1 kgs': 11, '1ki': 11,
-  '2 kings': 12, '2 kgs': 12, '2ki': 12, '1 chronicles': 13, '1 chron': 13, '1ch': 13, '2 chronicles': 14, '2 chron': 14, '2ch': 14,
-  'ezra': 15, 'ezr': 15, 'nehemiah': 16, 'neh': 16, 'esther': 17, 'esth': 17, 'es': 17, 'job': 18, 'jb': 18,
-  'psalms': 19, 'psalm': 19, 'ps': 19, 'proverbs': 20, 'prov': 20, 'pr': 20, 'ecclesiastes': 21, 'eccl': 21, 'ec': 21,
-  'song of solomon': 22, 'song of sol': 22, 'sos': 22, 'song': 22, 'isaiah': 23, 'isa': 23, 'jeremiah': 24, 'jer': 24,
-  'lamentations': 25, 'lam': 25, 'ezekiel': 26, 'ezek': 26, 'eze': 26, 'daniel': 27, 'dan': 27, 'da': 27, 'hosea': 28, 'hos': 28,
-  'joel': 29, 'jl': 29, 'amos': 30, 'am': 30, 'obadiah': 31, 'obad': 31, 'ob': 31, 'jonah': 32, 'jon': 32, 'micah': 33, 'mic': 33,
-  'nahum': 34, 'nah': 34, 'na': 34, 'habakkuk': 35, 'hab': 35, 'zephaniah': 36, 'zeph': 36, 'zep': 36, 'haggai': 37, 'hag': 37,
-  'zechariah': 38, 'zech': 38, 'zec': 38, 'malachi': 39, 'mal': 39, 'matthew': 40, 'matt': 40, 'mt': 40, 'mark': 41, 'mrk': 41, 'mk': 41,
-  'luke': 42, 'lk': 42, 'john': 43, 'joh': 43, 'jhn': 43, 'acts': 44, 'act': 44, 'romans': 45, 'rom': 45, 'ro': 45,
-  '1 corinthians': 46, '1 cor': 46, '1co': 46, '2 corinthians': 47, '2 cor': 47, '2co': 47, 'galatians': 48, 'gal': 48,
-  'ephesians': 49, 'eph': 49, 'philippians': 50, 'phil': 50, 'php': 50, 'colossians': 51, 'col': 51,
-  '1 thessalonians': 52, '1 thess': 52, '1th': 52, '2 thessalonians': 53, '2 thess': 53, '2th': 53,
-  '1 timothy': 54, '1 tim': 54, '1ti': 54, '2 timothy': 55, '2 tim': 55, '2ti': 55, 'titus': 56, 'tit': 56,
-  'philemon': 57, 'philem': 57, 'phm': 57, 'hebrews': 58, 'heb': 58, 'james': 59, 'jas': 59, 'jmp': 59,
-  '1 peter': 60, '1 pet': 60, '1pe': 60, '2 peter': 61, '2 pet': 61, '2pe': 61, '1 john': 62, '1 joh': 62, '1jn': 62,
-  '2 john': 63, '2 joh': 63, '2jn': 63, '3 john': 64, '3 joh': 64, '3jn': 64, 'jude': 65, 'jud': 65,
-  'revelation': 66, 'rev': 66, 're': 66,
+// --- New Maintainable Book Data Structure ---
+interface BookInfo {
+  english: string;
+  danish: string;
+  abbreviations: string[]; // Combined English/Danish abbreviations
+}
+
+const bibleBooks: BookInfo[] = [
+  { english: "Genesis", danish: "1 Mosebog", abbreviations: ["gen", "ge", "1 mos"] }, // 1
+  { english: "Exodus", danish: "2 Mosebog", abbreviations: ["ex", "2 mos"] }, // 2
+  { english: "Leviticus", danish: "3 Mosebog", abbreviations: ["lev", "le", "3 mos"] }, // 3
+  { english: "Numbers", danish: "4 Mosebog", abbreviations: ["num", "nu", "4 mos"] }, // 4
+  { english: "Deuteronomy", danish: "5 Mosebog", abbreviations: ["deut", "de", "5 mos"] }, // 5
+  { english: "Joshua", danish: "Josua", abbreviations: ["jos"] }, // 6
+  { english: "Judges", danish: "Dommerbogen", abbreviations: ["judg", "jg", "dom"] }, // 7
+  { english: "Ruth", danish: "Ruths Bog", abbreviations: ["ru", "rut"] }, // 8
+  { english: "1 Samuel", danish: "1 Samuelsbog", abbreviations: ["1sa", "1 sam"] }, // 9
+  { english: "2 Samuel", danish: "2 Samuelsbog", abbreviations: ["2sa", "2 sam"] }, // 10
+  { english: "1 Kings", danish: "1 Kongebog", abbreviations: ["1 kgs", "1ki", "1 kong"] }, // 11
+  { english: "2 Kings", danish: "2 Kongebog", abbreviations: ["2 kgs", "2ki", "2 kong"] }, // 12
+  { english: "1 Chronicles", danish: "1 Krønikebog", abbreviations: ["1 chron", "1ch", "1 krøn"] }, // 13
+  { english: "2 Chronicles", danish: "2 Krønikebog", abbreviations: ["2 chron", "2ch", "2 krøn"] }, // 14
+  { english: "Ezra", danish: "Ezras Bog", abbreviations: ["ezra"] }, // 15
+  { english: "Nehemiah", danish: "Nehemias' Bog", abbreviations: ["neh"] }, // 16
+  { english: "Esther", danish: "Esters Bog", abbreviations: ["esth", "est"] }, // 17
+  { english: "Job", danish: "Jobs Bog", abbreviations: ["job"] }, // 18
+  { english: "Psalms", danish: "Salmernes Bog", abbreviations: ["psalm", "sl"] }, // 19
+  { english: "Proverbs", danish: "Ordsprogenes Bog", abbreviations: ["prov", "ordsp"] }, // 20
+  { english: "Ecclesiastes", danish: "Prædikerens Bog", abbreviations: ["eccl", "ec", "præd"] }, // 21
+  { english: "Song of Solomon", danish: "Højsangen", abbreviations: ["song of sol", "sos", "højs"] }, // 22
+  { english: "Isaiah", danish: "Esajas' Bog", abbreviations: ["es"] }, // 23
+  { english: "Jeremiah", danish: "Jeremias' Bog", abbreviations: ["jer"] }, // 24
+  { english: "Lamentations", danish: "Klagesangene", abbreviations: ["lam", "klages"] }, // 25
+  { english: "Ezekiel", danish: "Ezekiels Bog", abbreviations: ["ezek", "ez"] }, // 26
+  { english: "Daniel", danish: "Daniels Bog", abbreviations: ["dan"] }, // 27
+  { english: "Hosea", danish: "Hoseas' Bog", abbreviations: ["hos"] }, // 28
+  { english: "Joel", danish: "Joels Bog", abbreviations: ["joel", "jl"] }, // 29 - Added jl
+  { english: "Amos", danish: "Amos' Bog", abbreviations: ["am"] }, // 30
+  { english: "Obadiah", danish: "Obadias' Bog", abbreviations: ["obad", "ob"] }, // 31 - Added ob
+  { english: "Jonah", danish: "Jonas' Bog", abbreviations: ["jon"] }, // 32
+  { english: "Micah", danish: "Mikas Bog", abbreviations: ["mik"] }, // 33
+  { english: "Nahum", danish: "Nahums Bog", abbreviations: ["nah"] }, // 34
+  { english: "Habakkuk", danish: "Habakkuks Bog", abbreviations: ["hab"] }, // 35
+  { english: "Zephaniah", danish: "Sefanias' Bog", abbreviations: ["zeph", "zep", "sef"] }, // 36 - Added zep
+  { english: "Haggai", danish: "Haggajs Bog", abbreviations: ["hag", "hagg"] }, // 37 - Added hagg
+  { english: "Zechariah", danish: "Zakarias' Bog", abbreviations: ["zech", "zec", "zak"] }, // 38 - Added zec
+  { english: "Malachi", danish: "Malakias' Bog", abbreviations: ["mal"] }, // 39
+  { english: "Matthew", danish: "Matthæusevangeliet", abbreviations: ["mt", "matt", "mattæus"] }, // 40 - Added mattæus
+  { english: "Mark", danish: "Markusevangeliet", abbreviations: ["mrk", "mk", "mark"] }, // 41 - Added mk
+  { english: "Luke", danish: "Lukasevangeliet", abbreviations: ["lk", "luk"] }, // 42 - Added luk
+  { english: "John", danish: "Johannesevangeliet", abbreviations: ["jhn", "joh"] }, // 43
+  { english: "Acts", danish: "Apostlenes Gerninger", abbreviations: ["act", "apg"] }, // 44
+  { english: "Romans", danish: "Romerbrevet", abbreviations: ["ro", "rom"] }, // 45
+  { english: "1 Corinthians", danish: "1 Korintherbrev", abbreviations: ["1co", "1 kor"] }, // 46
+  { english: "2 Corinthians", danish: "2 Korintherbrev", abbreviations: ["2co", "2 kor"] }, // 47
+  { english: "Galatians", danish: "Galaterbrevet", abbreviations: ["gal"] }, // 48
+  { english: "Ephesians", danish: "Efeserbrevet", abbreviations: ["eph", "ef", "efeserne"] }, // 49 - Added efeserne
+  { english: "Philippians", danish: "Filipperbrevet", abbreviations: ["php", "phil", "flp"] }, // 50 - Added phil
+  { english: "Colossians", danish: "Kolossenserbrevet", abbreviations: ["col", "kol"] }, // 51
+  { english: "1 Thessalonians", danish: "1 Thessalonikerbrev", abbreviations: ["1th", "1 thess"] }, // 52
+  { english: "2 Thessalonians", danish: "2 Thessalonikerbrev", abbreviations: ["2th", "2 thess"] }, // 53
+  { english: "1 Timothy", danish: "1 Timotheusbrev", abbreviations: ["1ti", "1 tim"] }, // 54
+  { english: "2 Timothy", danish: "2 Timotheusbrev", abbreviations: ["2ti", "2 tim"] }, // 55
+  { english: "Titus", danish: "Titusbrevet", abbreviations: ["tit"] }, // 56
+  { english: "Philemon", danish: "Filemonbrevet", abbreviations: ["phm", "filem"] }, // 57
+  { english: "Hebrews", danish: "Hebræerbrevet", abbreviations: ["heb", "hebr"] }, // 58
+  { english: "James", danish: "Jakobs Brev", abbreviations: ["jmp", "jas", "jak"] }, // 59 - Added jas
+  { english: "1 Peter", danish: "1 Peters Brev", abbreviations: ["1pe", "1 pet"] }, // 60
+  { english: "2 Peter", danish: "2 Peters Brev", abbreviations: ["2pe", "2 pet"] }, // 61
+  { english: "1 John", danish: "1 Johannes' Brev", abbreviations: ["1jn", "1 joh"] }, // 62
+  { english: "2 John", danish: "2 Johannes' Brev", abbreviations: ["2jn", "2 joh"] }, // 63
+  { english: "3 John", danish: "3 Johannes' Brev", abbreviations: ["3jn", "3 joh"] }, // 64
+  { english: "Jude", danish: "Judas' Brev", abbreviations: ["jud"] }, // 65
+  { english: "Revelation", danish: "Åbenbaringen", abbreviations: ["rev", "re", "åb"] }, // 66 - Added re
+];
+
+// Function to build the lookup map from the array
+function buildBookNameToNumberMap(): { [key: string]: number } {
+  const map: { [key: string]: number } = {};
+  bibleBooks.forEach((book, index) => {
+    const bookNumber = index + 1;
+    // Add English name (lowercase)
+    map[book.english.toLowerCase()] = bookNumber;
+    // Add Danish name (lowercase)
+    map[book.danish.toLowerCase()] = bookNumber;
+    // Add all abbreviations (lowercase)
+    book.abbreviations.forEach(abbr => {
+      map[abbr.toLowerCase()] = bookNumber;
+    });
+  });
+  return map;
+}
+
+// Generate the map for exact lookups
+const bookNameToNumberMap = buildBookNameToNumberMap();
+
+// --- Fuse.js Setup for Fuzzy Matching ---
+const allBookNamesAndAbbrs = Object.keys(bookNameToNumberMap);
+const fuseOptions = {
+  includeScore: true,
+  threshold: 0.4, // Adjust threshold (0=exact, 1=match anything)
+  minMatchCharLength: 2, 
 };
-    
+const fuse = new Fuse(allBookNamesAndAbbrs, fuseOptions);
+// --- End Fuse.js Setup ---
+
 function parseReference(reference: string | undefined): { bookName: string; chapter: number; startVerse: number; endVerse?: number } | null {
   if (!reference) return null;
-  reference = reference.trim().toLowerCase();
+  const lowerRef = reference.trim().toLowerCase(); // Convert to lowercase FIRST
   // Basic regex, might need refinement for edge cases
-  const match = reference.match(/^([1-3]?\s?[a-z]+(?:\s+[a-z]+)*)\s?(\d+):(\d+)(?:-(\d+))?$/);
+  // Now match against the lowercased string
+  const match = lowerRef.match(/^([1-3]?\s?[a-zåæø]+(?:\s+[a-zåæø]+)*)\s?(\d+):(\d+)(?:-(\d+))?$/);
+  // Also added åæø to the regex character set for robustness, although toLowerCase should handle most cases
   if (!match) return null;
-  const bookName = match[1].trim();
+  const bookName = match[1].trim(); // bookName will already be lowercase here
   const chapter = parseInt(match[2], 10);
   const startVerse = parseInt(match[3], 10);
   const endVerse = match[4] ? parseInt(match[4], 10) : undefined;
@@ -133,7 +219,7 @@ export async function fetchVerseLocally(reference: string, lang: 'en' | 'da'): P
   const startTime = Date.now();
   console.log(`[JW.org API - Local] Starting fetch for reference: "${reference}", lang: "${lang}" at ${new Date().toISOString()}`);
 
-  // 1. Parse Reference to get verseId
+  // 1. Parse Reference to get potential bookName
   const parsedRef = parseReference(reference);
   if (!parsedRef) {
     console.error(`[JW.org API - Local] Could not parse reference: ${reference}`);
@@ -142,11 +228,24 @@ export async function fetchVerseLocally(reference: string, lang: 'en' | 'da'): P
   if (parsedRef.endVerse && parsedRef.endVerse !== parsedRef.startVerse) {
     console.warn(`[JW.org API - Local] Range detected (${reference}), fetching only start verse ${parsedRef.startVerse}.`);
   }
-  const bookNumber = bookNameToNumberMap[parsedRef.bookName];
+  
+  // --- Book Lookup with Fuzzy Fallback ---
+  let bookNumber = bookNameToNumberMap[parsedRef.bookName]; // Try exact match first (already lowercase)
+  
   if (bookNumber === undefined) {
-      console.error(`[JW.org API - Local] Book not found in mapping: ${parsedRef.bookName}`);
-      throw new Error(`Book not found in mapping: ${parsedRef.bookName}`);
+      console.log(`[JW.org API - Local] Exact book name "${parsedRef.bookName}" not found. Trying fuzzy match...`);
+      const fuseResults = fuse.search(parsedRef.bookName);
+      if (fuseResults.length > 0 && fuseResults[0].score !== undefined && fuseResults[0].score <= fuseOptions.threshold) {
+          const bestMatch = fuseResults[0].item;
+          bookNumber = bookNameToNumberMap[bestMatch]; // Get number from the matched name
+          console.log(`[JW.org API - Local] Fuzzy match found: "${parsedRef.bookName}" -> "${bestMatch}" (Book ${bookNumber})`);
+      } else {
+          console.error(`[JW.org API - Local] Book not found in mapping (exact or fuzzy): ${parsedRef.bookName}`);
+          throw new Error(`Book not found in mapping: ${parsedRef.bookName}`);
+      }
   }
+  // --- End Book Lookup ---
+
   const verseId = createVerseId(bookNumber, parsedRef.chapter, parsedRef.startVerse);
   console.log(`[JW.org API - Local] Calculated Verse ID: ${verseId}`);
 

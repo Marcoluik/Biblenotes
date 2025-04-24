@@ -63,10 +63,10 @@ export const NoteViewModal: React.FC<NoteViewModalProps> = ({ note, onClose, bib
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-      <div className="bg-white rounded-lg overflow-hidden shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col my-8">
+      <div className="bg-white rounded-lg overflow-hidden shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col my-8">
         {/* Header */}
         <div className="flex justify-between items-center p-4 border-b sticky top-0 bg-white z-10">
-          <h2 className="text-xl font-bold text-gray-800">{note.title}</h2>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">{note.title}</h2>
           <button
             onClick={onClose}
             className="text-gray-500 hover:text-gray-700 p-2"

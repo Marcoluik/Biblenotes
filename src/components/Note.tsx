@@ -454,7 +454,10 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
           )}
         </div>
       </div>
-      <div className="text-gray-700 whitespace-pre-wrap mb-2">
+      <div 
+        className={`text-gray-700 whitespace-pre-wrap mb-2 ${!isEditing ? 'cursor-pointer hover:bg-gray-50 rounded p-1' : ''}`}
+        onClick={() => !isEditing && setShowViewModal(true)}
+      >
         {renderContent()}
       </div>
       {note.category && (
