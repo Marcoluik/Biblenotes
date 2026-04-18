@@ -53,8 +53,9 @@ export async function searchBibleVerses(query: string, bibleId?: string): Promis
 
     if (parsedRef) {
       console.log(`[NWT Search] Parsed as reference:`, parsedRef);
-      const targetReference = `${parsedRef.bookName} ${parsedRef.chapter}:${parsedRef.startVerse}`;
-      // TODO: Handle verse ranges if parseReference supports endVerse and fetchers support it
+      const rangeStr = parsedRef.endVerse && parsedRef.endVerse !== parsedRef.startVerse
+        ? `-${parsedRef.endVerse}` : '';
+      const targetReference = `${parsedRef.bookName} ${parsedRef.chapter}:${parsedRef.startVerse}${rangeStr}`;
       
       try {
         let verseText: string | null = null;

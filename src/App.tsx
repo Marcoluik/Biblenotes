@@ -765,10 +765,10 @@ function App() {
       )}
       
       {/* Mobile-friendly header */}
-      <div className="mobile-header bg-white rounded-lg shadow-md p-4 mb-8">
+      <div className="mobile-header bg-white rounded-2xl shadow-sm border border-gray-100 px-5 py-3 mb-6">
         <div className="flex justify-between items-center">
-          <h1 className="mobile-header-title font-bold text-gray-800 flex items-center">
-            <span className="mr-2">📖</span> Bible Notes
+          <h1 className="mobile-header-title font-bold text-gray-900 tracking-tight flex items-center gap-2">
+            <span className="text-indigo-500">📖</span> Bible Notes
           </h1>
           <div className="flex items-center space-x-3">
             <button
@@ -848,13 +848,16 @@ function App() {
                     <button
                       key={bible.id}
                       onClick={() => handleBibleSelect(bible.id)}
-                      className={`w-full text-left px-4 py-2 hover:bg-gray-100 ${
-                        bible.id === selectedBibleId ? 'bg-blue-50 font-semibold' : ''
+                      className={`w-full text-left px-4 py-2 rounded-lg flex items-center justify-between transition-colors ${
+                        bible.id === selectedBibleId ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-gray-700 hover:bg-gray-50'
                       }`}
                     >
-                      {/* Display name includes (Downloaded) or (Study Bible) */} 
-                      {bible.name} 
-                      ({bible.language.name})
+                      <span>{bible.name} <span className="text-xs text-gray-400 font-normal">({bible.language.name})</span></span>
+                      {bible.id === selectedBibleId && (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-indigo-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
                     </button>
                   ))
                 )}
@@ -868,78 +871,75 @@ function App() {
       <DailyVerse bibleId={selectedBibleId} />
       
       {/* Tabs for My Notes and Shared Notes */}
-      <div className="mb-4 border-b border-gray-200">
-        <ul className="flex flex-wrap -mb-px text-sm font-medium text-center">
-          <li className="mr-2">
-            <button
-              onClick={() => setActiveTab('my-notes')}
-              className={`inline-block p-4 rounded-t-lg ${
-                activeTab === 'my-notes'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-500 hover:text-gray-600 hover:border-gray-300'
-              }`}
-            >
-              My Notes
-            </button>
-          </li>
-          <li className="mr-2">
-            <button
-              onClick={() => setActiveTab('shared-notes')}
-              className={`inline-block p-4 rounded-t-lg ${
-                activeTab === 'shared-notes'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-500 hover:text-gray-600 hover:border-gray-300'
-              }`}
-            >
-              Shared with Me
-              {sharedNotes.length > 0 && (
-                <span className="ml-2 bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
-                  {sharedNotes.length}
-                </span>
-              )}
-            </button>
-            {activeTab === 'shared-notes' && (
-              <button
-                onClick={refreshNotes}
-                className="ml-2 p-1 text-gray-500 hover:text-gray-700"
-                title="Refresh shared notes"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-              </button>
+      <div className="mb-5 flex items-center gap-3">
+        <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
+          <button
+            onClick={() => setActiveTab('my-notes')}
+            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 ${
+              activeTab === 'my-notes'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            My Notes
+          </button>
+          <button
+            onClick={() => setActiveTab('shared-notes')}
+            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 flex items-center gap-1.5 ${
+              activeTab === 'shared-notes'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Shared with Me
+            {sharedNotes.length > 0 && (
+              <span className="bg-indigo-100 text-indigo-700 text-xs font-semibold px-1.5 py-0.5 rounded-full">
+                {sharedNotes.length}
+              </span>
             )}
-          </li>
-        </ul>
+          </button>
+        </div>
+        {activeTab === 'shared-notes' && (
+          <button
+            onClick={refreshNotes}
+            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            title="Refresh shared notes"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+        )}
       </div>
       
       {/* Filters Row */}
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        <div className="flex-1 min-w-[200px]">
+      <div className="flex flex-wrap items-center gap-2 mb-5">
+        <div className="flex-1 min-w-[200px] relative">
+          <svg xmlns="http://www.w3.org/2000/svg" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
           <input
             type="text"
             placeholder="Search notes..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent"
           />
         </div>
-        <div className="w-full sm:w-auto">
-          <select
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="all">All Categories</option>
-            {categories.map(category => (
-              <option key={category} value={category}>{category}</option>
-            ))}
-          </select>
-        </div>
+        <select
+          value={selectedCategory}
+          onChange={(e) => setSelectedCategory(e.target.value)}
+          className="px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent text-gray-700"
+        >
+          <option value="all">All Categories</option>
+          {categories.map(category => (
+            <option key={category} value={category}>{category}</option>
+          ))}
+        </select>
       </div>
       
       {/* Notes Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {activeTab === 'my-notes' ? (
           filteredNotes.length > 0 ? (
             filteredNotes.map((note) => (
@@ -952,13 +952,15 @@ function App() {
               />
             ))
           ) : (
-            <div className="col-span-full text-center py-8">
-              <p className="text-gray-500 mb-4">No notes yet</p>
+            <div className="col-span-full flex flex-col items-center justify-center py-16 text-center">
+              <div className="text-5xl mb-4">📝</div>
+              <p className="text-gray-700 font-medium mb-1">No notes yet</p>
+              <p className="text-gray-400 text-sm mb-5">Start capturing your Bible study insights</p>
               <button
                 onClick={handleCreateNote}
-                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+                className="px-5 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 text-sm font-medium transition-colors"
               >
-                Create Your First Note
+                Create First Note
               </button>
             </div>
           )
@@ -976,8 +978,10 @@ function App() {
               />
             ))
           ) : (
-            <div className="col-span-full text-center py-8">
-              <p className="text-gray-500">No notes shared with you yet</p>
+            <div className="col-span-full flex flex-col items-center justify-center py-16 text-center">
+              <div className="text-5xl mb-4">🤝</div>
+              <p className="text-gray-700 font-medium mb-1">No shared notes yet</p>
+              <p className="text-gray-400 text-sm">Notes shared with you will appear here</p>
             </div>
           )
         )}

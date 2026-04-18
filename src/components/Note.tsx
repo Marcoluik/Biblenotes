@@ -25,7 +25,7 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
   
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(note.title);
-  const [content, setContent] = useState(note.content);
+  const [content, setContent] = useState(note.content || '');
   const [showInlineSelector, setShowInlineSelector] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareEmail, setShareEmail] = useState('');
@@ -38,6 +38,9 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
   const [isLoadingSharer, setIsLoadingSharer] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [allowEditing, setAllowEditing] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const lastSavedRef = useRef({ title: note.title, content: note.content || '' });
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Fetch sharer information if this is a shared note
   useEffect(() => {
@@ -134,46 +137,50 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
     }
   };
 
+  const performSave = async (): Promise<boolean> => {
+    const t = title.trim();
+    const c = content.trim();
+    if (!t || (isShared && !canEdit)) return false;
+    if (t === lastSavedRef.current.title && c === lastSavedRef.current.content) return true;
+    setSaveStatus('saving');
+    try {
+      onSave(note.id, t, c);
+      lastSavedRef.current = { title: t, content: c };
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus(prev => prev === 'saved' ? 'idle' : prev), 2000);
+      return true;
+    } catch {
+      setSaveStatus('error');
+      return false;
+    }
+  };
+
+  // Auto-save 1.5 s after the user stops typing
+  useEffect(() => {
+    if (!isEditing) return;
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    const dirty = title.trim() !== lastSavedRef.current.title || content.trim() !== lastSavedRef.current.content;
+    if (dirty && title.trim()) {
+      if (saveStatus === 'saved') setSaveStatus('idle');
+      autoSaveTimerRef.current = setTimeout(() => { performSave(); }, 1500);
+    }
+    return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current); };
+  }, [title, content, isEditing]);
+
+  const handleClose = async () => {
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    await performSave();
+    setIsEditing(false);
+    setSaveStatus('idle');
+  };
+
   const handleSave = async () => {
-    if (title.trim() === '') {
+    if (!title.trim()) {
       alert('Please enter a title for your note');
       return;
     }
-    
-    try {
-      // Add check for edit permissions on shared notes
-      if (isShared && !canEdit) {
-        console.warn("Attempted to save a shared note without edit permissions.");
-        alert("You do not have permission to edit this shared note.");
-        return; // Prevent saving
-      }
-      
-      console.log('Attempting to save note:', {
-        id: note.id,
-        title: title.trim(),
-        contentLength: content.trim().length
-      });
-      
-      await new Promise<void>((resolve, reject) => {
-        try {
-          onSave(note.id, title.trim(), content.trim());
-          resolve();
-        } catch (error) {
-          reject(error);
-        }
-      });
-      
-      console.log('Note saved successfully');
-      setIsEditing(false);
-    } catch (error: any) {
-      console.error('Error saving note:', error);
-      console.error('Error details:', {
-        errorName: error?.name || 'Unknown',
-        errorMessage: error?.message || 'Unknown error',
-        errorStack: error?.stack || 'No stack trace'
-      });
-      alert(`Failed to save note: ${error?.message || 'Unknown error'}`);
-    }
+    const ok = await performSave();
+    if (ok) { setIsEditing(false); setSaveStatus('idle'); }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -386,32 +393,27 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-4 mb-4 hover:shadow-lg transition-shadow duration-200">
-      <div className="flex justify-between items-start mb-2">
-        <div className="flex items-center">
-          <h3 className="text-lg font-semibold text-gray-800">{note.title}</h3>
-          {isShared && (
-            <div className="ml-2">
-              {isLoadingSharer ? (
-                <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
-                  Loading...
-                </span>
-              ) : sharerEmail ? (
-                <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
-                  {canEdit ? 'Collaborative with' : 'Shared by'} {sharerEmail}
-                </span>
-              ) : (
-                <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
-                  {canEdit ? 'Collaborative' : 'Shared'}
-                </span>
-              )}
-            </div>
-          )}
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col gap-3 hover:shadow-md hover:border-gray-200 transition-all duration-200">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <h3 className="font-semibold text-gray-900 leading-snug mb-1.5">{note.title}</h3>
+          <div className="flex flex-wrap gap-1.5">
+            {note.category && (
+              <span className="text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full font-medium">
+                {note.category}
+              </span>
+            )}
+            {isShared && (
+              <span className="text-xs bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-medium">
+                {isLoadingSharer ? 'Loading...' : canEdit ? `Collaborative${sharerEmail ? ' · ' + sharerEmail : ''}` : `Shared${sharerEmail ? ' by ' + sharerEmail : ''}`}
+              </span>
+            )}
+          </div>
         </div>
-        <div className="flex space-x-1">
+        <div className="flex shrink-0 items-center gap-0.5">
           <button
             onClick={() => setShowViewModal(true)}
-            className="text-blue-500 hover:text-blue-700 p-1"
+            className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
             title="View Note"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -421,8 +423,8 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
           </button>
           <button
             onClick={() => setIsEditing(true)}
-            className={`text-blue-500 hover:text-blue-700 p-1 ${
-              (isShared && !canEdit) ? 'opacity-50 cursor-not-allowed' : ''
+            className={`p-1.5 rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors ${
+              (isShared && !canEdit) ? 'opacity-40 cursor-not-allowed' : ''
             }`}
             title="Edit Note"
             disabled={isShared && !canEdit}
@@ -435,7 +437,7 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
             <>
               <button
                 onClick={() => setShowShareModal(true)}
-                className="text-green-500 hover:text-green-700 p-1"
+                className="p-1.5 rounded-lg text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
                 title="Share Note"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -444,7 +446,7 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
               </button>
               <button
                 onClick={() => onDelete(note.id)}
-                className="text-red-500 hover:text-red-700 p-1"
+                className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
                 title="Delete Note"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -455,117 +457,98 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
           )}
         </div>
       </div>
-      <div 
-        className={`text-gray-700 whitespace-pre-wrap mb-2 ${!isEditing ? 'cursor-pointer hover:bg-gray-50 rounded p-1' : ''}`}
-        onClick={() => !isEditing && setShowViewModal(true)}
+      <div
+        className="text-sm text-gray-600 leading-relaxed cursor-pointer hover:text-gray-800 transition-colors"
+        onClick={() => setShowViewModal(true)}
       >
         {renderContent()}
       </div>
-      {note.category && (
-        <div className="text-sm text-gray-500">
-          Category: {note.category}
+      {note.updated_at && (
+        <div className="text-xs text-gray-300 pt-1 border-t border-gray-50">
+          {new Date(note.updated_at).toLocaleDateString('da-DK', { day: 'numeric', month: 'short', year: 'numeric' })}
         </div>
       )}
 
-      {/* Edit Modal */}
+      {/* Edit — full-screen on mobile, centered modal on desktop */}
       {isEditing && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white rounded-lg overflow-hidden shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col my-8">
+        <div className="fixed inset-0 z-50 flex flex-col md:bg-black md:bg-opacity-50 md:items-center md:justify-center md:p-4">
+          <div className="bg-white flex-1 flex flex-col md:flex-initial md:rounded-2xl md:shadow-xl md:w-full md:max-w-5xl md:max-h-[90vh] md:overflow-hidden md:my-8">
             {/* Header */}
-            <div className="flex justify-between items-center p-4 border-b sticky top-0 bg-white z-10">
-              <h2 className="text-xl font-bold text-gray-800">Edit Note</h2>
+            <div className="flex justify-between items-center px-4 py-3 border-b bg-white z-10 shrink-0">
+              <div className="flex items-center gap-3">
+                <h2 className="font-semibold text-gray-900">{note.title}</h2>
+                {saveStatus === 'saving' && (
+                  <span className="text-xs text-gray-400 flex items-center gap-1">
+                    <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                    </svg>
+                    Saving…
+                  </span>
+                )}
+                {saveStatus === 'saved' && (
+                  <span className="text-xs text-emerald-600 font-medium">✓ Saved</span>
+                )}
+                {saveStatus === 'error' && (
+                  <span className="text-xs text-red-500">Save failed</span>
+                )}
+              </div>
               <button
-                onClick={() => setIsEditing(false)}
-                className="text-gray-500 hover:text-gray-700 p-2 rounded-full hover:bg-gray-100 transition-colors"
+                onClick={handleClose}
+                className="p-2 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
                 aria-label="Close"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
-            
+
             {/* Content */}
-            <div className="p-4 overflow-y-auto flex-grow flex flex-col min-h-0">
+            <div className="px-4 pt-3 pb-2 overflow-y-auto flex-grow flex flex-col min-h-0">
               <input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="w-full px-3 py-2 mb-4 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 mb-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent"
                 placeholder="Note title"
               />
-              
-              <div className="mb-4 flex space-x-2 p-2 bg-gray-100 rounded-lg">
-                <button
-                  onClick={() => applyFormatting('bold')}
-                  className="p-1 hover:bg-gray-200 rounded"
-                  title="Bold"
-                >
-                  <strong>B</strong>
-                </button>
-                <button
-                  onClick={() => applyFormatting('italic')}
-                  className="p-1 hover:bg-gray-200 rounded"
-                  title="Italic"
-                >
-                  <em>I</em>
-                </button>
-                <button
-                  onClick={() => applyFormatting('underline')}
-                  className="p-1 hover:bg-gray-200 rounded"
-                  title="Underline"
-                >
-                  <u>U</u>
-                </button>
-                <button
-                  onClick={() => applyFormatting('quote')}
-                  className="p-1 hover:bg-gray-200 rounded"
-                  title="Quote"
-                >
-                  "
-                </button>
-                <button
-                  onClick={() => setShowInlineSelector(true)}
-                  className="p-1 hover:bg-gray-200 rounded"
-                  title="Insert Bible Verse"
-                >
-                  📖
-                </button>
+
+              <div className="mb-3 flex items-center gap-1 p-1.5 bg-gray-100 rounded-xl">
+                <button onClick={() => applyFormatting('bold')} className="px-2.5 py-1 hover:bg-white rounded-lg text-sm font-bold text-gray-700 transition-colors" title="Bold">B</button>
+                <button onClick={() => applyFormatting('italic')} className="px-2.5 py-1 hover:bg-white rounded-lg text-sm italic text-gray-700 transition-colors" title="Italic">I</button>
+                <button onClick={() => applyFormatting('underline')} className="px-2.5 py-1 hover:bg-white rounded-lg text-sm underline text-gray-700 transition-colors" title="Underline">U</button>
+                <button onClick={() => applyFormatting('quote')} className="px-2.5 py-1 hover:bg-white rounded-lg text-sm text-gray-700 transition-colors" title="Quote">"</button>
+                <button onClick={() => setShowInlineSelector(true)} className="px-2.5 py-1 hover:bg-white rounded-lg text-sm transition-colors" title="Insert Bible Verse">📖</button>
               </div>
-              
+
               <textarea
                 ref={textareaRef}
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 onKeyDown={handleKeyDown}
-                className="w-full h-[36rem] px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Write your note here..."
+                className="flex-1 w-full min-h-[16rem] px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent resize-none"
+                placeholder="Write your note here…"
               />
-              
+
               {showInlineSelector && (
-                <div className="mt-4">
-                  <InlineBibleVerseSelector 
-                    onInsertVerse={handleInsertVerse} 
-                    bibleId={bibleId} 
+                <div className="mt-3">
+                  <InlineBibleVerseSelector
+                    onInsertVerse={handleInsertVerse}
+                    bibleId={bibleId}
                     onClose={() => setShowInlineSelector(false)}
                   />
                 </div>
               )}
             </div>
-            
+
             {/* Footer */}
-            <div className="p-4 border-t flex justify-between items-center sticky bottom-0 bg-white z-10">
-              <button
-                onClick={() => setIsEditing(false)}
-                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100"
-              >
-                Cancel
-              </button>
+            <div className="px-4 py-3 border-t flex justify-end items-center gap-2 bg-white shrink-0">
               <button
                 onClick={handleSave}
-                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+                className="px-5 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 text-sm font-medium transition-colors"
               >
-                Save
+                Save & Close
               </button>
             </div>
           </div>

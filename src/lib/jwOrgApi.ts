@@ -111,10 +111,6 @@ export async function fetchVerseLocally(reference: string, lang: 'en' | 'da'): P
     console.error(`[JW.org API - Local] Could not parse reference: ${reference}`);
     throw new Error(`Could not parse reference: ${reference}`);
   }
-  if (parsedRef.endVerse && parsedRef.endVerse !== parsedRef.startVerse) {
-    console.warn(`[JW.org API - Local] Range detected (${reference}), fetching only start verse ${parsedRef.startVerse}.`);
-  }
-  
   // --- Book Lookup with Fuzzy Fallback ---
   let bookNumber = bookNameToNumberMap[parsedRef.bookName]; // Try exact match first (already lowercase)
   
@@ -171,17 +167,26 @@ export async function fetchVerseLocally(reference: string, lang: 'en' | 'da'): P
          console.log(`[JW.org API - Local] Ongoing fetch for ${lang} completed.`);
     }
 
-    // 3. Look up verse in (now populated) cache
+    // 3. Look up verse(s) in (now populated) cache
     const cachedVerseData = verseDataCache[lang];
-    if (!cachedVerseData) { // Should ideally not happen if fetch logic is correct
+    if (!cachedVerseData) {
          throw new Error(`Verse data for language '${lang}' is not available after fetch attempt.`);
     }
 
-    const verseText = cachedVerseData[verseId];
+    const end = parsedRef.endVerse && parsedRef.endVerse > parsedRef.startVerse
+      ? parsedRef.endVerse : parsedRef.startVerse;
 
-    if (verseText !== undefined && verseText !== null) {
-        console.log(`[JW.org API - Local] Found verse ${verseId} in ${lang} cache.`);
-        return verseText;
+    const collected: string[] = [];
+    for (let v = parsedRef.startVerse; v <= end; v++) {
+      const vid = createVerseId(bookNumber, parsedRef.chapter, v);
+      const text = cachedVerseData[vid];
+      if (text !== undefined && text !== null) {
+        collected.push(text);
+      }
+    }
+
+    if (collected.length > 0) {
+        return collected.join(' ');
     } else {
         console.error(`[JW.org API - Local] Verse ID ${verseId} not found in loaded ${lang}.json data.`);
         throw new Error(`Verse ${reference} (ID: ${verseId}) not found in local data.`);
