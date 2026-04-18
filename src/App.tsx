@@ -54,6 +54,7 @@ function App() {
 
   const [sharedNotes, setSharedNotes] = useState<SharedNoteInfo[]>([]);
   const [activeTab, setActiveTab] = useState<'my-notes' | 'shared-notes'>('my-notes');
+  const [newNoteModalHeight, setNewNoteModalHeight] = useState('100dvh');
 
   useEffect(() => {
     let isMounted = true; 
@@ -674,12 +675,26 @@ function App() {
     };
   }, []);
 
-  // Lock body scroll while a modal is open
+  // Lock body scroll while a modal is open + track visual viewport for new-note modal
   useEffect(() => {
     const open = showAddNoteForm || showBibleModal;
     if (!open) return;
     const scrollY = window.scrollY;
     document.body.style.cssText = `overflow:hidden;position:fixed;top:-${scrollY}px;width:100%`;
+
+    if (showAddNoteForm) {
+      const vv = window.visualViewport;
+      const updateHeight = () => setNewNoteModalHeight(vv ? `${vv.height}px` : '100dvh');
+      updateHeight();
+      vv?.addEventListener('resize', updateHeight);
+      return () => {
+        document.body.style.cssText = '';
+        window.scrollTo(0, scrollY);
+        vv?.removeEventListener('resize', updateHeight);
+        setNewNoteModalHeight('100dvh');
+      };
+    }
+
     return () => { document.body.style.cssText = ''; window.scrollTo(0, scrollY); };
   }, [showAddNoteForm, showBibleModal]);
 
@@ -1022,7 +1037,7 @@ function App() {
 
       {/* New Note Modal — full-screen mobile, centred desktop */}
       {showAddNoteForm && (
-        <div className="fixed inset-0 z-50 flex flex-col md:bg-black/50 md:items-center md:justify-center md:p-4">
+        <div className="fixed inset-x-0 top-0 z-50 flex flex-col md:bg-black/50 md:items-center md:justify-center md:p-4" style={{ height: newNoteModalHeight }}>
           <div className="bg-white flex-1 flex flex-col md:flex-initial md:rounded-2xl md:shadow-xl md:w-full md:max-w-2xl md:max-h-[90vh] md:overflow-hidden md:my-8">
 
             {/* Header */}
@@ -1100,7 +1115,7 @@ function App() {
               <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('italic'); }}    className="w-8 h-8 flex items-center justify-center rounded-lg italic text-gray-600 hover:bg-gray-100 transition-colors text-sm" title="Italic">I</button>
               <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('underline'); }} className="w-8 h-8 flex items-center justify-center rounded-lg underline text-gray-600 hover:bg-gray-100 transition-colors text-sm" title="Underline">U</button>
               <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('quote'); }}     className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 transition-colors text-lg leading-none" title="Quote">"</button>
-              <button onMouseDown={(e) => { e.preventDefault(); setShowInlineSelector(true); }}  className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors" title="Insert Bible Verse">📖</button>
+              <button onClick={() => setShowInlineSelector(true)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors" title="Insert Bible Verse">📖</button>
               <div className="flex-1" />
               <button onClick={handleAddNote} className="px-4 py-1.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 text-sm font-medium transition-colors">
                 Create Note

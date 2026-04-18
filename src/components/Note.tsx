@@ -41,6 +41,7 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const lastSavedRef = useRef({ title: note.title, content: note.content || '' });
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [editHeight, setEditHeight] = useState('100dvh');
 
   // Fetch sharer information if this is a shared note
   useEffect(() => {
@@ -155,14 +156,22 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
     }
   };
 
-  // Lock body scroll while editor is open (prevents main page scrolling behind it)
+  // Lock body scroll + track visual viewport height to keep toolbar above keyboard
   useEffect(() => {
     if (!isEditing) return;
     const scrollY = window.scrollY;
     document.body.style.cssText = `overflow:hidden;position:fixed;top:-${scrollY}px;width:100%`;
+
+    const vv = window.visualViewport;
+    const updateHeight = () => setEditHeight(vv ? `${vv.height}px` : '100dvh');
+    updateHeight();
+    vv?.addEventListener('resize', updateHeight);
+
     return () => {
       document.body.style.cssText = '';
       window.scrollTo(0, scrollY);
+      vv?.removeEventListener('resize', updateHeight);
+      setEditHeight('100dvh');
     };
   }, [isEditing]);
 
@@ -490,7 +499,7 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
 
       {/* Edit — full-screen on mobile, centred modal on desktop */}
       {isEditing && (
-        <div className="fixed inset-0 z-50 flex flex-col md:bg-black/50 md:items-center md:justify-center md:p-4">
+        <div className="fixed inset-x-0 top-0 z-50 flex flex-col md:bg-black/50 md:items-center md:justify-center md:p-4" style={{ height: editHeight }}>
           <div className="bg-white flex-1 flex flex-col md:flex-initial md:rounded-2xl md:shadow-xl md:w-full md:max-w-5xl md:max-h-[90vh] md:overflow-hidden md:my-8">
 
             {/* Header */}
@@ -552,7 +561,7 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
               <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('italic'); }}    className="w-8 h-8 flex items-center justify-center rounded-lg italic text-gray-600 hover:bg-gray-100 transition-colors text-sm" title="Italic">I</button>
               <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('underline'); }} className="w-8 h-8 flex items-center justify-center rounded-lg underline text-gray-600 hover:bg-gray-100 transition-colors text-sm" title="Underline">U</button>
               <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('quote'); }}     className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 transition-colors text-lg leading-none" title="Quote">"</button>
-              <button onMouseDown={(e) => { e.preventDefault(); setShowInlineSelector(true); }}  className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors" title="Insert Bible Verse">📖</button>
+              <button onClick={() => setShowInlineSelector(true)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors" title="Insert Bible Verse">📖</button>
               <div className="flex-1" />
               <button onClick={handleSave} className="px-4 py-1.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 text-sm font-medium transition-colors">
                 Save & Close

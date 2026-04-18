@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { searchBibleVerses } from '../lib/bibleApi';
 import { BibleVerse } from '../types';
 
@@ -8,8 +9,8 @@ interface InlineBibleVerseSelectorProps {
   bibleId?: string;
 }
 
-export const InlineBibleVerseSelector: React.FC<InlineBibleVerseSelectorProps> = ({ 
-  onInsertVerse, 
+export const InlineBibleVerseSelector: React.FC<InlineBibleVerseSelectorProps> = ({
+  onInsertVerse,
   onClose,
   bibleId
 }) => {
@@ -24,13 +25,13 @@ export const InlineBibleVerseSelector: React.FC<InlineBibleVerseSelectorProps> =
     if (inputRef.current) {
       inputRef.current.focus();
     }
-    
+
     const handleClickOutside = (event: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         onClose();
       }
     };
-    
+
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
@@ -43,140 +44,131 @@ export const InlineBibleVerseSelector: React.FC<InlineBibleVerseSelectorProps> =
         setVerses([]);
         return;
       }
-      
+
       const cleanQuery = searchTerm.replace('@', '');
-      
-      console.log('🔎 Starting verse search with query:', cleanQuery);
       setLoading(true);
-      
+
       try {
-        console.log('📤 Sending search request...');
         const results = await searchBibleVerses(cleanQuery, bibleId);
-        console.log('📦 Search results:', results);
-        
         setVerses(results);
         if (results.length > 0) {
-          console.log('✨ Auto-selecting first verse:', results[0]);
           setSelectedVerse(results[0]);
-        } else {
-          console.log('📭 No verses found for query:', cleanQuery);
         }
       } catch (error: any) {
-        console.error('💥 Error in verse search:', {
-          error,
-          query: cleanQuery,
-          errorMessage: error.message
-        });
+        console.error('Verse search error:', error.message);
         setVerses([]);
       } finally {
         setLoading(false);
       }
     };
 
-    console.log('⏳ Debouncing search for query:', searchTerm);
     const timeoutId = setTimeout(searchVerses, 300);
     return () => clearTimeout(timeoutId);
   }, [searchTerm, bibleId]);
 
-  const handleVerseSelect = (verse: BibleVerse) => {
-    console.log('🎯 Selected verse:', verse);
-    setSelectedVerse(verse);
-  };
-
   const handleInsert = () => {
     if (selectedVerse) {
       const content = selectedVerse.content || selectedVerse.text || '';
-      console.log('📝 Inserting verse:', {
-        reference: selectedVerse.reference,
-        content
-      });
       onInsertVerse(selectedVerse.reference, content);
       onClose();
     }
   };
 
-  return (
-    <div 
-      ref={containerRef}
-      className="fixed inset-0 flex items-center justify-center z-50"
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center"
       style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
     >
-      <div className="bg-white rounded-lg shadow-lg p-4 max-w-md w-full mx-4">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold">Insert Bible Verse</h3>
-          <button 
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700"
-          >
-            ✕
+      <div
+        ref={containerRef}
+        className="bg-white w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl shadow-xl flex flex-col max-h-[70vh]"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b shrink-0">
+          <h3 className="font-semibold text-gray-900">Insert Bible Verse</h3>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </button>
         </div>
-        
-        <div className="mb-4">
+
+        {/* Search */}
+        <div className="px-4 pt-3 pb-2 shrink-0">
           <input
             ref={inputRef}
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder={bibleId === 'nwt-local-da' ? 'F.eks. Johannes 3:16 eller 1 Mosebog 1:1' : 'e.g. John 3:16'}
-            className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            onKeyDown={(e) => e.key === 'Enter' && handleInsert()}
+            placeholder={bibleId === 'nwt-local-da' ? 'F.eks. Johannes 3:16' : 'e.g. John 3:16'}
+            style={{ fontSize: '16px' }}
+            className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent"
           />
           {bibleId === 'nwt-local-da' && (
-            <p className="text-xs text-gray-400 mt-1">Skriv bognavnet og kapitel:vers — f.eks. "Johannes 3:16"</p>
+            <p className="text-xs text-gray-400 mt-1.5">Skriv bognavnet og kapitel:vers — f.eks. "Johannes 3:16"</p>
           )}
         </div>
-        
-        {loading ? (
-          <div className="flex justify-center py-4">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
-          </div>
-        ) : verses.length > 0 ? (
-          <div className="max-h-60 overflow-y-auto mb-4">
-            {verses.map((verse) => (
-              <div
-                key={verse.id}
-                className={`p-2 mb-2 rounded cursor-pointer ${
-                  selectedVerse?.id === verse.id ? 'bg-blue-100 border border-blue-300' : 'hover:bg-gray-100'
-                }`}
-                onClick={() => {
-                  if (verse.id.startsWith('bookmatch-')) {
-                    console.log('📚 Clicked book suggestion:', verse.reference);
-                    setSearchTerm(verse.reference + ' ');
-                    setSelectedVerse(null);
-                    setVerses([]);
-                    inputRef.current?.focus();
-                  } else {
-                    handleVerseSelect(verse);
-                  }
-                }}
-              >
-                <div className="font-semibold">{verse.reference}</div>
-                <div className="text-sm text-gray-700">
-                  {verse.content || verse.text || 'No content available'}
+
+        {/* Results */}
+        <div className="overflow-y-auto overscroll-contain flex-1 px-4 pb-2">
+          {loading ? (
+            <div className="flex justify-center py-6">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-500" />
+            </div>
+          ) : verses.length > 0 ? (
+            <div className="space-y-1.5 py-1">
+              {verses.map((verse) => (
+                <div
+                  key={verse.id}
+                  className={`px-3 py-2.5 rounded-xl cursor-pointer transition-colors ${
+                    selectedVerse?.id === verse.id
+                      ? 'bg-indigo-50 border border-indigo-200'
+                      : 'hover:bg-gray-50 border border-transparent'
+                  }`}
+                  onClick={() => {
+                    if (verse.id.startsWith('bookmatch-')) {
+                      setSearchTerm(verse.reference + ' ');
+                      setSelectedVerse(null);
+                      setVerses([]);
+                      inputRef.current?.focus();
+                    } else {
+                      setSelectedVerse(verse);
+                    }
+                  }}
+                >
+                  <div className="text-sm font-semibold text-gray-800">{verse.reference}</div>
+                  <div className="text-sm text-gray-500 mt-0.5 line-clamp-2">
+                    {verse.content || verse.text || 'No content available'}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        ) : searchTerm.length >= 2 ? (
-          <div className="text-center py-4 text-gray-500">
-            Try searching for a book name (e.g., "John") or a specific verse (e.g., "John 3:16")
-          </div>
-        ) : null}
-        
-        <div className="flex justify-end">
+              ))}
+            </div>
+          ) : searchTerm.length >= 2 ? (
+            <p className="text-sm text-gray-400 text-center py-6">
+              {bibleId === 'nwt-local-da' ? 'Ingen vers fundet — prøv f.eks. "Johannes 3:16"' : 'No verses found — try e.g. "John 3:16"'}
+            </p>
+          ) : (
+            <p className="text-sm text-gray-400 text-center py-4">Start typing a reference…</p>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-4 py-3 border-t shrink-0">
           <button
             onClick={handleInsert}
             disabled={!selectedVerse}
-            className={`px-4 py-2 rounded ${
+            className={`w-full py-2.5 rounded-xl font-medium text-sm transition-colors ${
               selectedVerse
-                ? 'bg-blue-500 text-white hover:bg-blue-600'
-                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                ? 'bg-indigo-600 text-white hover:bg-indigo-700'
+                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
             }`}
           >
             Insert Verse
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
-}; 
+};
