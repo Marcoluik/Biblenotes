@@ -41,7 +41,7 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const lastSavedRef = useRef({ title: note.title, content: note.content || '' });
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [editHeight, setEditHeight] = useState('100dvh');
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
 
   // Fetch sharer information if this is a shared note
   useEffect(() => {
@@ -156,22 +156,26 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
     }
   };
 
-  // Lock body scroll + track visual viewport height to keep toolbar above keyboard
+  // Lock body scroll + track keyboard height to keep toolbar above keyboard
   useEffect(() => {
     if (!isEditing) return;
     const scrollY = window.scrollY;
     document.body.style.cssText = `overflow:hidden;position:fixed;top:-${scrollY}px;width:100%`;
 
     const vv = window.visualViewport;
-    const updateHeight = () => setEditHeight(vv ? `${vv.height}px` : '100dvh');
-    updateHeight();
-    vv?.addEventListener('resize', updateHeight);
+    const update = () => {
+      if (vv) setKeyboardOffset(Math.max(0, window.innerHeight - vv.height - vv.offsetTop));
+    };
+    update();
+    vv?.addEventListener('resize', update);
+    vv?.addEventListener('scroll', update);
 
     return () => {
       document.body.style.cssText = '';
       window.scrollTo(0, scrollY);
-      vv?.removeEventListener('resize', updateHeight);
-      setEditHeight('100dvh');
+      vv?.removeEventListener('resize', update);
+      vv?.removeEventListener('scroll', update);
+      setKeyboardOffset(0);
     };
   }, [isEditing]);
 
@@ -499,7 +503,7 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
 
       {/* Edit — full-screen on mobile, centred modal on desktop */}
       {isEditing && (
-        <div className="fixed inset-x-0 top-0 z-50 flex flex-col md:bg-black/50 md:items-center md:justify-center md:p-4" style={{ height: editHeight }}>
+        <div className="fixed inset-0 z-50 flex flex-col md:bg-black/50 md:items-center md:justify-center md:p-4">
           <div className="bg-white flex-1 flex flex-col md:flex-initial md:rounded-2xl md:shadow-xl md:w-full md:max-w-5xl md:max-h-[90vh] md:overflow-hidden md:my-8">
 
             {/* Header */}
@@ -556,7 +560,7 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
             )}
 
             {/* Bottom bar — toolbar + save, always visible above keyboard */}
-            <div className="shrink-0 border-t bg-white flex items-center gap-1 px-3 py-2">
+            <div className="shrink-0 border-t bg-white flex items-center gap-1 px-3 py-2" style={{ paddingBottom: keyboardOffset > 0 ? `${keyboardOffset + 8}px` : undefined }}>
               <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('bold'); }}      className="w-8 h-8 flex items-center justify-center rounded-lg font-bold text-gray-600 hover:bg-gray-100 transition-colors text-sm" title="Bold">B</button>
               <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('italic'); }}    className="w-8 h-8 flex items-center justify-center rounded-lg italic text-gray-600 hover:bg-gray-100 transition-colors text-sm" title="Italic">I</button>
               <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('underline'); }} className="w-8 h-8 flex items-center justify-center rounded-lg underline text-gray-600 hover:bg-gray-100 transition-colors text-sm" title="Underline">U</button>

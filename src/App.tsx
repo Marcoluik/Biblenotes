@@ -54,7 +54,7 @@ function App() {
 
   const [sharedNotes, setSharedNotes] = useState<SharedNoteInfo[]>([]);
   const [activeTab, setActiveTab] = useState<'my-notes' | 'shared-notes'>('my-notes');
-  const [newNoteModalHeight, setNewNoteModalHeight] = useState('100dvh');
+  const [newNoteKeyboardOffset, setNewNoteKeyboardOffset] = useState(0);
 
   useEffect(() => {
     let isMounted = true; 
@@ -675,7 +675,7 @@ function App() {
     };
   }, []);
 
-  // Lock body scroll while a modal is open + track visual viewport for new-note modal
+  // Lock body scroll while a modal is open + track keyboard height for new-note toolbar
   useEffect(() => {
     const open = showAddNoteForm || showBibleModal;
     if (!open) return;
@@ -684,14 +684,18 @@ function App() {
 
     if (showAddNoteForm) {
       const vv = window.visualViewport;
-      const updateHeight = () => setNewNoteModalHeight(vv ? `${vv.height}px` : '100dvh');
-      updateHeight();
-      vv?.addEventListener('resize', updateHeight);
+      const update = () => {
+        if (vv) setNewNoteKeyboardOffset(Math.max(0, window.innerHeight - vv.height - vv.offsetTop));
+      };
+      update();
+      vv?.addEventListener('resize', update);
+      vv?.addEventListener('scroll', update);
       return () => {
         document.body.style.cssText = '';
         window.scrollTo(0, scrollY);
-        vv?.removeEventListener('resize', updateHeight);
-        setNewNoteModalHeight('100dvh');
+        vv?.removeEventListener('resize', update);
+        vv?.removeEventListener('scroll', update);
+        setNewNoteKeyboardOffset(0);
       };
     }
 
@@ -1037,7 +1041,7 @@ function App() {
 
       {/* New Note Modal — full-screen mobile, centred desktop */}
       {showAddNoteForm && (
-        <div className="fixed inset-x-0 top-0 z-50 flex flex-col md:bg-black/50 md:items-center md:justify-center md:p-4" style={{ height: newNoteModalHeight }}>
+        <div className="fixed inset-0 z-50 flex flex-col md:bg-black/50 md:items-center md:justify-center md:p-4">
           <div className="bg-white flex-1 flex flex-col md:flex-initial md:rounded-2xl md:shadow-xl md:w-full md:max-w-2xl md:max-h-[90vh] md:overflow-hidden md:my-8">
 
             {/* Header */}
@@ -1110,7 +1114,7 @@ function App() {
             )}
 
             {/* Bottom toolbar */}
-            <div className="shrink-0 border-t bg-white flex items-center gap-1 px-3 py-2">
+            <div className="shrink-0 border-t bg-white flex items-center gap-1 px-3 py-2" style={{ paddingBottom: newNoteKeyboardOffset > 0 ? `${newNoteKeyboardOffset + 8}px` : undefined }}>
               <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('bold'); }}      className="w-8 h-8 flex items-center justify-center rounded-lg font-bold text-gray-600 hover:bg-gray-100 transition-colors text-sm" title="Bold">B</button>
               <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('italic'); }}    className="w-8 h-8 flex items-center justify-center rounded-lg italic text-gray-600 hover:bg-gray-100 transition-colors text-sm" title="Italic">I</button>
               <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('underline'); }} className="w-8 h-8 flex items-center justify-center rounded-lg underline text-gray-600 hover:bg-gray-100 transition-colors text-sm" title="Underline">U</button>
