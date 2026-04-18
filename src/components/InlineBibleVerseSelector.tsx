@@ -118,9 +118,12 @@ export const InlineBibleVerseSelector: React.FC<InlineBibleVerseSelectorProps> =
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search for a verse (e.g., John 3:16)"
+            placeholder={bibleId === 'nwt-local-da' ? 'F.eks. Johannes 3:16 eller 1 Mosebog 1:1' : 'e.g. John 3:16'}
             className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
+          {bibleId === 'nwt-local-da' && (
+            <p className="text-xs text-gray-400 mt-1">Skriv bognavnet og kapitel:vers — f.eks. "Johannes 3:16"</p>
+          )}
         </div>
         
         {loading ? (

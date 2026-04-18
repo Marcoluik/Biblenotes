@@ -221,125 +221,52 @@ function App() {
     };
   }, []); // End initial load effect
 
-  // Separate useEffect for fetching Bibles and setting default,
-  // depends on user and profile state being ready.
+  // Load available Bibles as soon as user is ready.
+  // Profile is optional — used only to apply a saved preference.
   useEffect(() => {
-    console.log(`[Bible Effect] Running. User State ID: ${user?.id}, Profile State ID: ${profile?.id}`);
-    
-    if (!user || !profile) { 
-        // Add extra check: Are IDs mismatched even if both exist?
-        if(user && profile && user.id !== profile.id) {
-            console.warn(`[Bible Effect] User ID (${user.id}) and Profile ID (${profile.id}) mismatch! Skipping.`);
-            // Potentially reset profile state or trigger a reload?
-            // setProfile(null); // Example: Force profile refetch on next run
-            return; 
-        }
-        console.log("[Bible Effect] User or Profile not ready, skipping.");
-        return; 
-    } 
-    console.log(`[Bible Effect] User and profile ready (User: ${user.id}). Proceeding...`);
+    if (!user) return;
 
-    // --- Define Bible Entries --- 
-    // Online NWT via Proxy
-    const nwtStudyBibleEntryEn = {
-      id: 'nwtsty-en', 
-      name: 'NWT (Study Bible) - English - not working', // Renamed slightly for clarity
-      language: { id: 'eng', name: 'English' },
-    };
-    const nwtStudyBibleEntryDa = {
-      id: 'nwtsty-da',
-      name: 'NWT (Study Bible) - Danish - not working', // Renamed slightly for clarity
-      language: { id: 'dan', name: 'Danish' },
-    };
-    // Downloaded NWT via Static JSON
-    const nwtDownloadedEn = {
-      id: 'nwt-local-en', 
-      name: 'NWT (Downloaded) - English',
-      language: { id: 'eng', name: 'English' },
-    };
-    const nwtDownloadedDa = {
+    const nwtDanish = {
       id: 'nwt-local-da',
-      name: 'NWT (Downloaded) - Danish',
+      name: 'NWT - Dansk',
       language: { id: 'dan', name: 'Danish' },
     };
-    // --- End Define Entries ---
+    const nwtEnglish = {
+      id: 'nwt-local-en',
+      name: 'NWT - English',
+      language: { id: 'eng', name: 'English' },
+    };
 
     const fetchBiblesAndSetDefault = async () => {
       let fetchedBibles: { id: string; name: string; language: { id: string; name: string } }[] = [];
       try {
         fetchedBibles = await getAvailableBibles();
-        console.log("Fetched Available Bibles from API:", fetchedBibles);
       } catch (error) {
         console.error('Error fetching Bibles from API:', error);
-        // Continue even if API fetch fails, we have NWT options
       }
 
-      // Combine manual NWT entries with fetched ones, filtering duplicates
       const combinedBibles = [
-        nwtStudyBibleEntryEn, 
-        nwtStudyBibleEntryDa,
-        nwtDownloadedEn, // Add downloaded EN
-        nwtDownloadedDa, // Add downloaded DA
-        // Filter out any fetched Bibles that match our manual entries by ID or Name
-        ...fetchedBibles.filter(b => 
-            ![nwtStudyBibleEntryEn.id, nwtStudyBibleEntryDa.id, nwtDownloadedEn.id, nwtDownloadedDa.id].includes(b.id) &&
-            ![nwtStudyBibleEntryEn.name, nwtStudyBibleEntryDa.name, nwtDownloadedEn.name, nwtDownloadedDa.name].includes(b.name)
-        )
+        nwtDanish,
+        nwtEnglish,
+        ...fetchedBibles.filter(b => ![nwtDanish.id, nwtEnglish.id].includes(b.id)),
       ];
       combinedBibles.sort((a, b) => a.name.localeCompare(b.name));
-      
+
       setAvailableBibles(combinedBibles);
       setFilteredBibles(combinedBibles);
 
-      // --- Default Selection Logic (ensure profile and options exist) ---
-      let defaultBibleId = '';
-      const userPreferredId = profile?.preferred_bible_id; 
-      console.log("Setting default Bible. User Preferred ID:", userPreferredId);
-      
-      if (userPreferredId && combinedBibles.some(b => b.id === userPreferredId)) {
-        defaultBibleId = userPreferredId;
-        console.log(`Using user preferred Bible ID: ${defaultBibleId}`);
-      } else { 
-        console.log("No valid user preference found, applying default logic...");
-        // Prioritize Downloaded, then Study, then others
-        const nwtLocalEn = combinedBibles.find(b => b.id === nwtDownloadedEn.id);
-        const nwtLocalDa = combinedBibles.find(b => b.id === nwtDownloadedDa.id);
-        const nwtOnlineEn = combinedBibles.find(b => b.id === nwtStudyBibleEntryEn.id);
-        const nwtOnlineDa = combinedBibles.find(b => b.id === nwtStudyBibleEntryDa.id);
-        const kjvBible = combinedBibles.find(bible => 
-            bible.id === 'de4e12af7f28f599-02' || 
-            bible.name.toLowerCase().includes('king james version') || 
-            bible.name.toLowerCase().includes('kjv')
-        );
-        const esvBible = combinedBibles.find(bible => 
-            bible.id === '9879dbb7cfe39e4d-01' || 
-            bible.name.toLowerCase().includes('english standard version') || 
-            bible.name.toLowerCase().includes('esv')
-        );
+      const userPreferredId = profile?.preferred_bible_id;
+      const defaultBibleId =
+        (userPreferredId && combinedBibles.some(b => b.id === userPreferredId))
+          ? userPreferredId
+          : nwtDanish.id;
 
-        // Apply default order: Local EN -> Local DA -> Online EN -> Online DA -> KJV -> ESV -> First available
-        if (nwtLocalDa) defaultBibleId = nwtLocalDa.id; // Prioritize Danish downloaded
-        else if (nwtLocalEn) defaultBibleId = nwtLocalEn.id;
-        else if (nwtOnlineEn) defaultBibleId = nwtOnlineEn.id;
-        else if (nwtOnlineDa) defaultBibleId = nwtOnlineDa.id;
-        else if (kjvBible) defaultBibleId = kjvBible.id;
-        else if (esvBible) defaultBibleId = esvBible.id;
-        else if (combinedBibles.length > 0) defaultBibleId = combinedBibles[0].id;
-        
-        console.log(`Applied default Bible ID: ${defaultBibleId}`);
-      }
-
-      if (defaultBibleId) {
-        setSelectedBibleId(defaultBibleId);
-      } else {
-          console.warn("Could not determine a default or preferred Bible ID.");
-      }
-      setIsLoading(false); // Ensure loading stops after bibles are processed
+      setSelectedBibleId(defaultBibleId);
+      setIsLoading(false);
     };
-    
+
     fetchBiblesAndSetDefault();
-    
-  }, [user, profile]);
+  }, [user, profile?.preferred_bible_id]);
 
   // Filter Bibles when search term changes
   useEffect(() => {
@@ -845,11 +772,11 @@ function App() {
           </h1>
           <div className="flex items-center space-x-3">
             <button
-              onClick={() => setShowBibleModal(true)}
-              className="flex items-center justify-center w-10 h-10 text-gray-700 hover:text-gray-900 border border-gray-300 rounded-lg transition-all duration-200 hover:bg-gray-100 active:scale-95"
+              onClick={() => { setShowBibleModal(true); setBibleSearchTerm(''); }}
+              className="flex items-center justify-center px-2 h-10 text-gray-700 hover:text-gray-900 border border-gray-300 rounded-lg transition-all duration-200 hover:bg-gray-100 active:scale-95 text-xs font-medium max-w-[120px] truncate"
               title="Select Bible Translation"
             >
-              📖
+              📖 {availableBibles.find(b => b.id === selectedBibleId)?.name ?? 'Bible'}
             </button>
             <button
               onClick={handleCreateNote}

@@ -47,14 +47,14 @@ export const bibleBooks: BookInfo[] = [
   { english: "Haggai", danish: "Haggajs Bog", abbreviations: ["hag", "hagg"] }, // 37 - Added hagg
   { english: "Zechariah", danish: "Zakarias' Bog", abbreviations: ["zech", "zec", "zak"] }, // 38 - Added zec
   { english: "Malachi", danish: "Malakias' Bog", abbreviations: ["mal"] }, // 39
-  { english: "Matthew", danish: "Matthæusevangeliet", abbreviations: ["mt", "matt", "mattæus"] }, // 40 - Added mattæus
-  { english: "Mark", danish: "Markusevangeliet", abbreviations: ["mrk", "mk", "mark"] }, // 41 - Added mk
-  { english: "Luke", danish: "Lukasevangeliet", abbreviations: ["lk", "luk"] }, // 42 - Added luk
-  { english: "John", danish: "Johannesevangeliet", abbreviations: ["jhn", "joh"] }, // 43
-  { english: "Acts", danish: "Apostlenes Gerninger", abbreviations: ["act", "apg"] }, // 44
-  { english: "Romans", danish: "Romerbrevet", abbreviations: ["ro", "rom"] }, // 45
-  { english: "1 Corinthians", danish: "1 Korintherbrev", abbreviations: ["1co", "1 kor"] }, // 46
-  { english: "2 Corinthians", danish: "2 Korintherbrev", abbreviations: ["2co", "2 kor"] }, // 47
+  { english: "Matthew", danish: "Matthæusevangeliet", abbreviations: ["mt", "matt", "mattæus", "matthæus"] }, // 40
+  { english: "Mark", danish: "Markusevangeliet", abbreviations: ["mrk", "mk", "mark", "markus"] }, // 41
+  { english: "Luke", danish: "Lukasevangeliet", abbreviations: ["lk", "luk", "lukas"] }, // 42
+  { english: "John", danish: "Johannesevangeliet", abbreviations: ["jhn", "joh", "johannes"] }, // 43
+  { english: "Acts", danish: "Apostlenes Gerninger", abbreviations: ["act", "apg", "apostlenes"] }, // 44
+  { english: "Romans", danish: "Romerbrevet", abbreviations: ["ro", "rom", "romerne"] }, // 45
+  { english: "1 Corinthians", danish: "1 Korintherbrev", abbreviations: ["1co", "1 kor", "1 korintherne"] }, // 46
+  { english: "2 Corinthians", danish: "2 Korintherbrev", abbreviations: ["2co", "2 kor", "2 korintherne"] }, // 47
   { english: "Galatians", danish: "Galaterbrevet", abbreviations: ["gal"] }, // 48
   { english: "Ephesians", danish: "Efeserbrevet", abbreviations: ["eph", "ef", "efeserne"] }, // 49 - Added efeserne
   { english: "Philippians", danish: "Filipperbrevet", abbreviations: ["php", "phil", "flp"] }, // 50 - Added phil
