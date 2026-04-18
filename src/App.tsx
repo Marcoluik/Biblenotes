@@ -479,19 +479,11 @@ function App() {
   };
 
   const handleCreateNote = () => {
-    setShowAddNoteForm(true);
-    // Reset form fields
     setNewNoteTitle('');
     setNewNoteContent('');
     setNewNoteCategory(undefined);
     setIsNewCategory(false);
-    // Focus on the title input after a short delay
-    setTimeout(() => {
-      const titleInput = document.querySelector('input[placeholder="Note title"]') as HTMLInputElement;
-      if (titleInput) {
-        titleInput.focus();
-      }
-    }, 100);
+    setShowAddNoteForm(true);
   };
 
   const handleAddNote = async () => {
@@ -578,9 +570,21 @@ function App() {
     }
   };
 
-  const filteredNotes = selectedCategory === 'all'
-    ? notes
-    : notes.filter(note => note.category === selectedCategory);
+  const filteredNotes = notes.filter(note => {
+    const matchesCategory = selectedCategory === 'all' || note.category === selectedCategory;
+    const q = searchTerm.trim().toLowerCase();
+    const matchesSearch = !q ||
+      note.title.toLowerCase().includes(q) ||
+      (note.content || '').toLowerCase().includes(q);
+    return matchesCategory && matchesSearch;
+  });
+
+  const filteredSharedNotes = sharedNotes.filter(({ note }) => {
+    const q = searchTerm.trim().toLowerCase();
+    return !q ||
+      note.title.toLowerCase().includes(q) ||
+      (note.content || '').toLowerCase().includes(q);
+  });
 
   const applyFormatting = (format: string) => {
     const textarea = newNoteTextareaRef.current;
@@ -669,6 +673,15 @@ function App() {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
+
+  // Lock body scroll while a modal is open
+  useEffect(() => {
+    const open = showAddNoteForm || showBibleModal;
+    if (!open) return;
+    const scrollY = window.scrollY;
+    document.body.style.cssText = `overflow:hidden;position:fixed;top:-${scrollY}px;width:100%`;
+    return () => { document.body.style.cssText = ''; window.scrollTo(0, scrollY); };
+  }, [showAddNoteForm, showBibleModal]);
 
   // Add a function to refresh notes
   const refreshNotes = async () => {
@@ -819,49 +832,57 @@ function App() {
         </button>
       </div>
 
-      {/* Bible Translation Modal */}
+      {/* Bible Translation Modal — bottom-sheet mobile, centred desktop */}
       {showBibleModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold">Select Bible Translation</h2>
-              <button
-                onClick={() => setShowBibleModal(false)}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                ✕
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center sm:p-4">
+          <div className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-xl flex flex-col max-h-[80vh]">
+            <div className="flex items-center justify-between px-5 py-4 border-b shrink-0">
+              <h2 className="font-semibold text-gray-900">Bible Translation</h2>
+              <button onClick={() => setShowBibleModal(false)} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
             </div>
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Search Bible translations..."
-                className="w-full px-3 py-2 border rounded-lg mb-4"
-                value={bibleSearchTerm}
-                onChange={(e) => setBibleSearchTerm(e.target.value)}
-              />
-              <div className="max-h-60 overflow-y-auto">
-                {filteredBibles.length === 0 ? (
-                  <p className="text-gray-500 px-4 py-2">No Bibles found matching your search.</p>
-                ) : (
-                  filteredBibles.map(bible => (
-                    <button
-                      key={bible.id}
-                      onClick={() => handleBibleSelect(bible.id)}
-                      className={`w-full text-left px-4 py-2 rounded-lg flex items-center justify-between transition-colors ${
-                        bible.id === selectedBibleId ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-gray-700 hover:bg-gray-50'
-                      }`}
-                    >
-                      <span>{bible.name} <span className="text-xs text-gray-400 font-normal">({bible.language.name})</span></span>
-                      {bible.id === selectedBibleId && (
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-indigo-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                    </button>
-                  ))
-                )}
+            <div className="px-4 pt-3 pb-2 shrink-0">
+              <div className="relative">
+                <svg xmlns="http://www.w3.org/2000/svg" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input
+                  type="text"
+                  placeholder="Search translations…"
+                  value={bibleSearchTerm}
+                  onChange={(e) => setBibleSearchTerm(e.target.value)}
+                  style={{ fontSize: '16px' }}
+                  className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent"
+                />
               </div>
+            </div>
+            <div className="overflow-y-auto overscroll-contain flex-1 px-4 pb-4">
+              {filteredBibles.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-6">No translations found</p>
+              ) : (
+                filteredBibles.map(bible => (
+                  <button
+                    key={bible.id}
+                    onClick={() => handleBibleSelect(bible.id)}
+                    className={`w-full text-left px-3 py-2.5 rounded-xl flex items-center justify-between transition-colors mb-1 ${
+                      bible.id === selectedBibleId ? 'bg-indigo-50 text-indigo-700' : 'text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <div>
+                      <span className="text-sm font-medium">{bible.name}</span>
+                      <span className="text-xs text-gray-400 ml-2">{bible.language.name}</span>
+                    </div>
+                    {bible.id === selectedBibleId && (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-indigo-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </button>
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -951,6 +972,12 @@ function App() {
                 bibleId={selectedBibleId}
               />
             ))
+          ) : notes.length > 0 ? (
+            <div className="col-span-full flex flex-col items-center justify-center py-16 text-center">
+              <div className="text-5xl mb-4">🔍</div>
+              <p className="text-gray-700 font-medium mb-1">No results</p>
+              <p className="text-gray-400 text-sm">Try a different search or category</p>
+            </div>
           ) : (
             <div className="col-span-full flex flex-col items-center justify-center py-16 text-center">
               <div className="text-5xl mb-4">📝</div>
@@ -965,8 +992,8 @@ function App() {
             </div>
           )
         ) : (
-          sharedNotes.length > 0 ? (
-            sharedNotes.map((sharedNoteInfo) => (
+          filteredSharedNotes.length > 0 ? (
+            filteredSharedNotes.map((sharedNoteInfo) => (
               <NoteComponent
                 key={sharedNoteInfo.note.id}
                 note={sharedNoteInfo.note}
@@ -977,6 +1004,12 @@ function App() {
                 canEdit={sharedNoteInfo.canEdit}
               />
             ))
+          ) : sharedNotes.length > 0 ? (
+            <div className="col-span-full flex flex-col items-center justify-center py-16 text-center">
+              <div className="text-5xl mb-4">🔍</div>
+              <p className="text-gray-700 font-medium mb-1">No results</p>
+              <p className="text-gray-400 text-sm">Try a different search term</p>
+            </div>
           ) : (
             <div className="col-span-full flex flex-col items-center justify-center py-16 text-center">
               <div className="text-5xl mb-4">🤝</div>
@@ -987,90 +1020,45 @@ function App() {
         )}
       </div>
 
-      {/* New Note Modal */}
+      {/* New Note Modal — full-screen mobile, centred desktop */}
       {showAddNoteForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold">Create New Note</h2>
-              <button
-                onClick={() => setShowAddNoteForm(false)}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                ✕
+        <div className="fixed inset-0 z-50 flex flex-col md:bg-black/50 md:items-center md:justify-center md:p-4">
+          <div className="bg-white flex-1 flex flex-col md:flex-initial md:rounded-2xl md:shadow-xl md:w-full md:max-w-2xl md:max-h-[90vh] md:overflow-hidden md:my-8">
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
+              <h2 className="font-semibold text-gray-900 text-base">New Note</h2>
+              <button onClick={() => setShowAddNoteForm(false)} className="p-2 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors" aria-label="Close">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
             </div>
-            <div className="mb-4">
+
+            {/* Scrollable content */}
+            <div className="flex-1 overflow-y-auto overscroll-contain flex flex-col gap-3 px-4 pt-3 pb-2 min-h-0">
               <input
                 type="text"
                 value={newNoteTitle}
                 onChange={(e) => setNewNoteTitle(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && newNoteTextareaRef.current?.focus()}
                 placeholder="Note title"
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                autoFocus
+                style={{ fontSize: '16px' }}
+                className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent"
               />
-            </div>
-            <div className="mb-2 flex space-x-2 p-2 bg-gray-100 rounded-lg">
-              <button
-                onClick={() => applyFormatting('bold')}
-                className="p-1 hover:bg-gray-200 rounded"
-                title="Bold"
-              >
-                <strong>B</strong>
-              </button>
-              <button
-                onClick={() => applyFormatting('italic')}
-                className="p-1 hover:bg-gray-200 rounded"
-                title="Italic"
-              >
-                <em>I</em>
-              </button>
-              <button
-                onClick={() => applyFormatting('underline')}
-                className="p-1 hover:bg-gray-200 rounded"
-                title="Underline"
-              >
-                <u>U</u>
-              </button>
-              <button
-                onClick={() => applyFormatting('quote')}
-                className="p-1 hover:bg-gray-200 rounded"
-                title="Quote"
-              >
-                "
-              </button>
-              <button
-                onClick={() => setShowInlineSelector(true)}
-                className="p-1 hover:bg-gray-200 rounded"
-                title="Insert Bible Verse"
-              >
-                📖
-              </button>
-            </div>
-            <div className="mb-4">
-              <textarea
-                ref={newNoteTextareaRef}
-                value={newNoteContent}
-                onChange={(e) => setNewNoteContent(e.target.value)}
-                onKeyDown={handleNewNoteKeyDown}
-                placeholder="Write your note here..."
-                className="w-full h-64 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div className="mb-4">
               {isNewCategory ? (
-                <div className="flex space-x-2">
+                <div className="flex gap-2">
                   <input
                     type="text"
                     ref={newCategoryInputRef}
                     value={newNoteCategory || ''}
                     onChange={(e) => setNewNoteCategory(e.target.value)}
-                    placeholder="Enter new category"
-                    className="flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="New category name"
+                    style={{ fontSize: '16px' }}
+                    className="flex-1 px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   />
-                  <button
-                    onClick={() => setIsNewCategory(false)}
-                    className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-100"
-                  >
+                  <button onClick={() => setIsNewCategory(false)} className="px-3 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 transition-colors">
                     Cancel
                   </button>
                 </div>
@@ -1078,37 +1066,47 @@ function App() {
                 <select
                   value={newNoteCategory || ''}
                   onChange={handleCategoryChange}
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  style={{ fontSize: '16px' }}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 text-gray-700 bg-white"
                 >
-                  <option value="">Select a category (optional)</option>
-                  {categories.map(category => (
-                    <option key={category} value={category}>{category}</option>
-                  ))}
+                  <option value="">Category (optional)</option>
+                  {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                   <option value="new">+ Add new category</option>
                 </select>
               )}
+              <textarea
+                ref={newNoteTextareaRef}
+                value={newNoteContent}
+                onChange={(e) => setNewNoteContent(e.target.value)}
+                onKeyDown={handleNewNoteKeyDown}
+                placeholder="Write your note here…"
+                style={{ fontSize: '16px' }}
+                className="flex-1 w-full min-h-[14rem] px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent resize-none leading-relaxed"
+              />
             </div>
-            <div className="flex justify-end space-x-2">
-              <button
-                onClick={() => setShowAddNoteForm(false)}
-                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleAddNote}
-                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
-              >
-                Create Note
-              </button>
-            </div>
+
+            {/* Verse selector overlay */}
             {showInlineSelector && (
               <InlineBibleVerseSelector
                 onInsertVerse={handleInsertVerse}
-                onClose={() => setShowInlineSelector(false)}
                 bibleId={selectedBibleId}
+                onClose={() => setShowInlineSelector(false)}
               />
             )}
+
+            {/* Bottom toolbar */}
+            <div className="shrink-0 border-t bg-white flex items-center gap-1 px-3 py-2">
+              <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('bold'); }}      className="w-8 h-8 flex items-center justify-center rounded-lg font-bold text-gray-600 hover:bg-gray-100 transition-colors text-sm" title="Bold">B</button>
+              <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('italic'); }}    className="w-8 h-8 flex items-center justify-center rounded-lg italic text-gray-600 hover:bg-gray-100 transition-colors text-sm" title="Italic">I</button>
+              <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('underline'); }} className="w-8 h-8 flex items-center justify-center rounded-lg underline text-gray-600 hover:bg-gray-100 transition-colors text-sm" title="Underline">U</button>
+              <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('quote'); }}     className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 transition-colors text-lg leading-none" title="Quote">"</button>
+              <button onMouseDown={(e) => { e.preventDefault(); setShowInlineSelector(true); }}  className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors" title="Insert Bible Verse">📖</button>
+              <div className="flex-1" />
+              <button onClick={handleAddNote} className="px-4 py-1.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 text-sm font-medium transition-colors">
+                Create Note
+              </button>
+            </div>
+
           </div>
         </div>
       )}
