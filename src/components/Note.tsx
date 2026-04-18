@@ -155,8 +155,16 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
     }
   };
 
-  // Auto-save 1.5 s after the user stops typing
+  // Lock body scroll while editor is open (prevents main page scrolling behind it)
   useEffect(() => {
+    if (!isEditing) return;
+    const scrollY = window.scrollY;
+    document.body.style.cssText = `overflow:hidden;position:fixed;top:-${scrollY}px;width:100%`;
+    return () => {
+      document.body.style.cssText = '';
+      window.scrollTo(0, scrollY);
+    };
+  }, [isEditing]);
     if (!isEditing) return;
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     const dirty = title.trim() !== lastSavedRef.current.title || content.trim() !== lastSavedRef.current.content;
@@ -282,41 +290,49 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
   };
 
   const applyFormatting = (format: string) => {
-    if (textareaRef.current) {
-      const start = textareaRef.current.selectionStart;
-      const end = textareaRef.current.selectionEnd;
-      const selectedText = content.substring(start, end);
-      
-      let formattedText = '';
-      switch (format) {
-        case 'bold':
-          formattedText = `**${selectedText}**`;
-          break;
-        case 'italic':
-          formattedText = `*${selectedText}*`;
-          break;
-        case 'underline':
-          formattedText = `__${selectedText}__`;
-          break;
-        case 'quote':
-          formattedText = `> ${selectedText}`;
-          break;
-        default:
-          formattedText = selectedText;
+    if (!textareaRef.current) return;
+    const start = textareaRef.current.selectionStart;
+    const end = textareaRef.current.selectionEnd;
+    const sel = content.substring(start, end);
+
+    const markers: Record<string, [string, string]> = {
+      bold:      ['**', '**'],
+      italic:    ['*',  '*' ],
+      underline: ['__', '__'],
+      quote:     ['> ', ''  ],
+    };
+    const [open, close] = markers[format] ?? ['', ''];
+
+    let newContent: string;
+    let cursorA: number;
+    let cursorB: number;
+
+    if (sel) {
+      // Toggle off if selection is already wrapped
+      const wrapped = close
+        ? sel.startsWith(open) && sel.endsWith(close) && sel.length > open.length + close.length
+        : sel.startsWith(open);
+      if (wrapped) {
+        const inner = close ? sel.slice(open.length, -close.length) : sel.slice(open.length);
+        newContent = content.substring(0, start) + inner + content.substring(end);
+        cursorA = start; cursorB = start + inner.length;
+      } else {
+        const out = `${open}${sel}${close}`;
+        newContent = content.substring(0, start) + out + content.substring(end);
+        cursorA = start; cursorB = start + out.length;
       }
-      
-      const newContent = content.substring(0, start) + formattedText + content.substring(end);
-      setContent(newContent);
-      
-      // Update cursor position
-      setTimeout(() => {
-        if (textareaRef.current) {
-          const newCursorPosition = start + formattedText.length;
-          textareaRef.current.focus();
-          textareaRef.current.setSelectionRange(newCursorPosition, newCursorPosition);
-        }
-      }, 0);
+    } else {
+      // No selection: insert markers and place cursor between them
+      newContent = content.substring(0, start) + open + close + content.substring(end);
+      cursorA = start + open.length;
+      cursorB = start + open.length;
     }
+
+    setContent(newContent);
+    setTimeout(() => {
+      textareaRef.current?.focus();
+      textareaRef.current?.setSelectionRange(cursorA, cursorB);
+    }, 0);
   };
 
   const renderContent = () => {
@@ -469,16 +485,17 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
         </div>
       )}
 
-      {/* Edit — full-screen on mobile, centered modal on desktop */}
+      {/* Edit — full-screen on mobile, centred modal on desktop */}
       {isEditing && (
-        <div className="fixed inset-0 z-50 flex flex-col md:bg-black md:bg-opacity-50 md:items-center md:justify-center md:p-4">
+        <div className="fixed inset-0 z-50 flex flex-col md:bg-black/50 md:items-center md:justify-center md:p-4">
           <div className="bg-white flex-1 flex flex-col md:flex-initial md:rounded-2xl md:shadow-xl md:w-full md:max-w-5xl md:max-h-[90vh] md:overflow-hidden md:my-8">
+
             {/* Header */}
-            <div className="flex justify-between items-center px-4 py-3 border-b bg-white z-10 shrink-0">
-              <div className="flex items-center gap-3">
-                <h2 className="font-semibold text-gray-900">{note.title}</h2>
+            <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <h2 className="font-semibold text-gray-900 truncate text-sm">{note.title}</h2>
                 {saveStatus === 'saving' && (
-                  <span className="text-xs text-gray-400 flex items-center gap-1">
+                  <span className="text-xs text-gray-400 flex items-center gap-1 shrink-0">
                     <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
@@ -486,71 +503,59 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
                     Saving…
                   </span>
                 )}
-                {saveStatus === 'saved' && (
-                  <span className="text-xs text-emerald-600 font-medium">✓ Saved</span>
-                )}
-                {saveStatus === 'error' && (
-                  <span className="text-xs text-red-500">Save failed</span>
-                )}
+                {saveStatus === 'saved' && <span className="text-xs text-emerald-600 font-medium shrink-0">✓ Saved</span>}
+                {saveStatus === 'error' && <span className="text-xs text-red-500 shrink-0">Save failed</span>}
               </div>
-              <button
-                onClick={handleClose}
-                className="p-2 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
-                aria-label="Close"
-              >
+              <button onClick={handleClose} className="p-2 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors shrink-0" aria-label="Close">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
 
-            {/* Content */}
-            <div className="px-4 pt-3 pb-2 overflow-y-auto flex-grow flex flex-col min-h-0">
+            {/* Scrollable content — overscroll-contain stops the page behind from scrolling */}
+            <div className="flex-1 overflow-y-auto overscroll-contain flex flex-col gap-3 px-4 pt-3 pb-2 min-h-0">
               <input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="w-full px-3 py-2 mb-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent"
+                style={{ fontSize: '16px' }}
+                className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent"
                 placeholder="Note title"
               />
-
-              <div className="mb-3 flex items-center gap-1 p-1.5 bg-gray-100 rounded-xl">
-                <button onClick={() => applyFormatting('bold')} className="px-2.5 py-1 hover:bg-white rounded-lg text-sm font-bold text-gray-700 transition-colors" title="Bold">B</button>
-                <button onClick={() => applyFormatting('italic')} className="px-2.5 py-1 hover:bg-white rounded-lg text-sm italic text-gray-700 transition-colors" title="Italic">I</button>
-                <button onClick={() => applyFormatting('underline')} className="px-2.5 py-1 hover:bg-white rounded-lg text-sm underline text-gray-700 transition-colors" title="Underline">U</button>
-                <button onClick={() => applyFormatting('quote')} className="px-2.5 py-1 hover:bg-white rounded-lg text-sm text-gray-700 transition-colors" title="Quote">"</button>
-                <button onClick={() => setShowInlineSelector(true)} className="px-2.5 py-1 hover:bg-white rounded-lg text-sm transition-colors" title="Insert Bible Verse">📖</button>
-              </div>
-
               <textarea
                 ref={textareaRef}
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 onKeyDown={handleKeyDown}
-                className="flex-1 w-full min-h-[16rem] px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent resize-none"
+                style={{ fontSize: '16px' }}
+                className="flex-1 w-full min-h-[12rem] px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent resize-none leading-relaxed"
                 placeholder="Write your note here…"
               />
-
-              {showInlineSelector && (
-                <div className="mt-3">
-                  <InlineBibleVerseSelector
-                    onInsertVerse={handleInsertVerse}
-                    bibleId={bibleId}
-                    onClose={() => setShowInlineSelector(false)}
-                  />
-                </div>
-              )}
             </div>
 
-            {/* Footer */}
-            <div className="px-4 py-3 border-t flex justify-end items-center gap-2 bg-white shrink-0">
-              <button
-                onClick={handleSave}
-                className="px-5 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 text-sm font-medium transition-colors"
-              >
+            {/* Verse selector overlay */}
+            {showInlineSelector && (
+              <InlineBibleVerseSelector
+                onInsertVerse={handleInsertVerse}
+                bibleId={bibleId}
+                onClose={() => setShowInlineSelector(false)}
+              />
+            )}
+
+            {/* Bottom bar — toolbar + save, always visible above keyboard */}
+            <div className="shrink-0 border-t bg-white flex items-center gap-1 px-3 py-2">
+              <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('bold'); }}      className="w-8 h-8 flex items-center justify-center rounded-lg font-bold text-gray-600 hover:bg-gray-100 transition-colors text-sm" title="Bold">B</button>
+              <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('italic'); }}    className="w-8 h-8 flex items-center justify-center rounded-lg italic text-gray-600 hover:bg-gray-100 transition-colors text-sm" title="Italic">I</button>
+              <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('underline'); }} className="w-8 h-8 flex items-center justify-center rounded-lg underline text-gray-600 hover:bg-gray-100 transition-colors text-sm" title="Underline">U</button>
+              <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('quote'); }}     className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 transition-colors text-lg leading-none" title="Quote">"</button>
+              <button onMouseDown={(e) => { e.preventDefault(); setShowInlineSelector(true); }}  className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors" title="Insert Bible Verse">📖</button>
+              <div className="flex-1" />
+              <button onClick={handleSave} className="px-4 py-1.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 text-sm font-medium transition-colors">
                 Save & Close
               </button>
             </div>
+
           </div>
         </div>
       )}
