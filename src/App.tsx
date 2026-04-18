@@ -54,7 +54,6 @@ function App() {
 
   const [sharedNotes, setSharedNotes] = useState<SharedNoteInfo[]>([]);
   const [activeTab, setActiveTab] = useState<'my-notes' | 'shared-notes'>('my-notes');
-  const [newNoteKeyboardOffset, setNewNoteKeyboardOffset] = useState(0);
 
   useEffect(() => {
     let isMounted = true; 
@@ -675,30 +674,12 @@ function App() {
     };
   }, []);
 
-  // Lock body scroll while a modal is open + track keyboard height for new-note toolbar
+  // Lock body scroll while a modal is open
   useEffect(() => {
     const open = showAddNoteForm || showBibleModal;
     if (!open) return;
     const scrollY = window.scrollY;
     document.body.style.cssText = `overflow:hidden;position:fixed;top:-${scrollY}px;width:100%`;
-
-    if (showAddNoteForm) {
-      const vv = window.visualViewport;
-      const update = () => {
-        if (vv) setNewNoteKeyboardOffset(Math.max(0, window.innerHeight - vv.height - vv.offsetTop));
-      };
-      update();
-      vv?.addEventListener('resize', update);
-      vv?.addEventListener('scroll', update);
-      return () => {
-        document.body.style.cssText = '';
-        window.scrollTo(0, scrollY);
-        vv?.removeEventListener('resize', update);
-        vv?.removeEventListener('scroll', update);
-        setNewNoteKeyboardOffset(0);
-      };
-    }
-
     return () => { document.body.style.cssText = ''; window.scrollTo(0, scrollY); };
   }, [showAddNoteForm, showBibleModal]);
 
@@ -1044,18 +1025,34 @@ function App() {
         <div className="fixed inset-0 z-50 flex flex-col md:bg-black/50 md:items-center md:justify-center md:p-4">
           <div className="bg-white flex-1 flex flex-col md:flex-initial md:rounded-2xl md:shadow-xl md:w-full md:max-w-2xl md:max-h-[90vh] md:overflow-hidden md:my-8">
 
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
-              <h2 className="font-semibold text-gray-900 text-base">New Note</h2>
-              <button onClick={() => setShowAddNoteForm(false)} className="p-2 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors" aria-label="Close">
+            {/* Header: title + Create + Close */}
+            <div className="flex items-center gap-2 px-4 py-3 border-b shrink-0">
+              <h2 className="font-semibold text-gray-900 text-base flex-1">New Note</h2>
+              <button onClick={handleAddNote} className="px-3 py-1.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 text-xs font-semibold transition-colors shrink-0">
+                Create
+              </button>
+              <button onClick={() => setShowAddNoteForm(false)} className="p-2 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors shrink-0" aria-label="Close">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
 
+            {/* Formatting toolbar — always visible above keyboard */}
+            <div className="flex items-center gap-0.5 px-3 py-2 border-b bg-gray-50 shrink-0">
+              <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('bold'); }}      className="w-9 h-9 flex items-center justify-center rounded-lg font-bold text-gray-700 hover:bg-white hover:shadow-sm transition-all text-sm" title="Bold">B</button>
+              <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('italic'); }}    className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-700 hover:bg-white hover:shadow-sm transition-all text-sm italic font-serif" title="Italic">I</button>
+              <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('underline'); }} className="w-9 h-9 flex items-center justify-center rounded-lg underline text-gray-700 hover:bg-white hover:shadow-sm transition-all text-sm" title="Underline">U</button>
+              <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('quote'); }}     className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-700 hover:bg-white hover:shadow-sm transition-all text-xl leading-none" title="Quote">"</button>
+              <button onClick={() => setShowInlineSelector(true)}                                className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-700 hover:bg-white hover:shadow-sm transition-all" title="Insert Bible Verse">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+              </button>
+            </div>
+
             {/* Scrollable content */}
-            <div className="flex-1 overflow-y-auto overscroll-contain flex flex-col gap-3 px-4 pt-3 pb-2 min-h-0">
+            <div className="flex-1 overflow-y-auto overscroll-contain flex flex-col gap-3 px-4 pt-3 pb-4 min-h-0">
               <input
                 type="text"
                 value={newNoteTitle}
@@ -1111,23 +1108,6 @@ function App() {
                 bibleId={selectedBibleId}
                 onClose={() => setShowInlineSelector(false)}
               />
-            )}
-
-            {/* Bottom toolbar */}
-            <div className="shrink-0 border-t bg-white flex items-center gap-1 px-3 py-2">
-              <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('bold'); }}      className="w-8 h-8 flex items-center justify-center rounded-lg font-bold text-gray-600 hover:bg-gray-100 transition-colors text-sm" title="Bold">B</button>
-              <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('italic'); }}    className="w-8 h-8 flex items-center justify-center rounded-lg italic text-gray-600 hover:bg-gray-100 transition-colors text-sm" title="Italic">I</button>
-              <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('underline'); }} className="w-8 h-8 flex items-center justify-center rounded-lg underline text-gray-600 hover:bg-gray-100 transition-colors text-sm" title="Underline">U</button>
-              <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('quote'); }}     className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 transition-colors text-lg leading-none" title="Quote">"</button>
-              <button onClick={() => setShowInlineSelector(true)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors" title="Insert Bible Verse">📖</button>
-              <div className="flex-1" />
-              <button onClick={handleAddNote} className="px-4 py-1.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 text-sm font-medium transition-colors">
-                Create Note
-              </button>
-            </div>
-            {/* Spacer that sits under the keyboard — pushes toolbar above it */}
-            {newNoteKeyboardOffset > 0 && (
-              <div className="shrink-0 bg-white" style={{ height: `${newNoteKeyboardOffset}px` }} />
             )}
 
           </div>
