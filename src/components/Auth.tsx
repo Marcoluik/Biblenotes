@@ -5,17 +5,52 @@ interface AuthProps {
   onAuthSuccess: () => void;
 }
 
+interface AuthError {
+  message: string;
+  code?: string;
+  status?: number;
+  details?: string;
+}
+
+function parseError(error: any): AuthError {
+  const status = error?.status ?? error?.code_challenge ?? undefined;
+  const code = error?.code ?? error?.error_code ?? undefined;
+  const message = error?.message ?? 'Unknown error';
+
+  if (!navigator.onLine) {
+    return { message: 'No internet connection. Check your network and try again.' };
+  }
+  if (message.toLowerCase().includes('fetch') || message.toLowerCase().includes('network') || status === 0) {
+    return {
+      message: 'Cannot reach Supabase. The project may be paused or the URL is wrong.',
+      details: `Project URL: ${import.meta.env.VITE_SUPABASE_URL}`,
+      code,
+      status,
+    };
+  }
+  if (message.toLowerCase().includes('invalid login') || message.toLowerCase().includes('invalid credentials')) {
+    return { message: 'Incorrect email or password.', code, status };
+  }
+  if (message.toLowerCase().includes('email not confirmed')) {
+    return { message: 'Email not confirmed. Check your inbox for a confirmation link.', code, status };
+  }
+  if (message.toLowerCase().includes('rate limit') || status === 429) {
+    return { message: 'Too many attempts. Please wait a minute and try again.', code, status };
+  }
+  return { message, code, status };
+}
+
 export const Auth: React.FC<AuthProps> = ({ onAuthSuccess }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<AuthError | null>(null);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError(null);
+    setAuthError(null);
 
     try {
       if (isSignUp) {
@@ -30,7 +65,7 @@ export const Auth: React.FC<AuthProps> = ({ onAuthSuccess }) => {
           }
         });
         if (signUpError) throw signUpError;
-        
+
         // Automatically sign in after signup
         const { error: signInError } = await supabase.auth.signInWithPassword({
           email,
@@ -47,7 +82,7 @@ export const Auth: React.FC<AuthProps> = ({ onAuthSuccess }) => {
         onAuthSuccess();
       }
     } catch (error: any) {
-      setError(error.message);
+      setAuthError(parseError(error));
     } finally {
       setLoading(false);
     }
@@ -64,9 +99,17 @@ export const Auth: React.FC<AuthProps> = ({ onAuthSuccess }) => {
         </div>
 
         <form className="mt-8 space-y-6" onSubmit={handleAuth}>
-          {error && (
-            <div className="p-3 text-sm text-red-500 bg-red-100 rounded-md">
-              {error}
+          {authError && (
+            <div className="p-3 text-sm bg-red-50 border border-red-200 rounded-md space-y-1">
+              <p className="font-medium text-red-700">{authError.message}</p>
+              {authError.details && (
+                <p className="text-red-500 text-xs">{authError.details}</p>
+              )}
+              {(authError.code || authError.status) && (
+                <p className="text-red-400 text-xs font-mono">
+                  {[authError.code && `code: ${authError.code}`, authError.status && `status: ${authError.status}`].filter(Boolean).join(' · ')}
+                </p>
+              )}
             </div>
           )}
 
