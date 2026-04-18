@@ -559,8 +559,8 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
               />
             )}
 
-            {/* Bottom bar — toolbar + save, always visible above keyboard */}
-            <div className="shrink-0 border-t bg-white flex items-center gap-1 px-3 py-2" style={{ paddingBottom: keyboardOffset > 0 ? `${keyboardOffset + 8}px` : undefined }}>
+            {/* Bottom bar — toolbar + save */}
+            <div className="shrink-0 border-t bg-white flex items-center gap-1 px-3 py-2">
               <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('bold'); }}      className="w-8 h-8 flex items-center justify-center rounded-lg font-bold text-gray-600 hover:bg-gray-100 transition-colors text-sm" title="Bold">B</button>
               <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('italic'); }}    className="w-8 h-8 flex items-center justify-center rounded-lg italic text-gray-600 hover:bg-gray-100 transition-colors text-sm" title="Italic">I</button>
               <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('underline'); }} className="w-8 h-8 flex items-center justify-center rounded-lg underline text-gray-600 hover:bg-gray-100 transition-colors text-sm" title="Underline">U</button>
@@ -571,6 +571,10 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
                 Save & Close
               </button>
             </div>
+            {/* Spacer that sits under the keyboard — pushes toolbar above it */}
+            {keyboardOffset > 0 && (
+              <div className="shrink-0 bg-white" style={{ height: `${keyboardOffset}px` }} />
+            )}
 
           </div>
         </div>

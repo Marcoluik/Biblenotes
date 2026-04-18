@@ -1114,7 +1114,7 @@ function App() {
             )}
 
             {/* Bottom toolbar */}
-            <div className="shrink-0 border-t bg-white flex items-center gap-1 px-3 py-2" style={{ paddingBottom: newNoteKeyboardOffset > 0 ? `${newNoteKeyboardOffset + 8}px` : undefined }}>
+            <div className="shrink-0 border-t bg-white flex items-center gap-1 px-3 py-2">
               <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('bold'); }}      className="w-8 h-8 flex items-center justify-center rounded-lg font-bold text-gray-600 hover:bg-gray-100 transition-colors text-sm" title="Bold">B</button>
               <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('italic'); }}    className="w-8 h-8 flex items-center justify-center rounded-lg italic text-gray-600 hover:bg-gray-100 transition-colors text-sm" title="Italic">I</button>
               <button onMouseDown={(e) => { e.preventDefault(); applyFormatting('underline'); }} className="w-8 h-8 flex items-center justify-center rounded-lg underline text-gray-600 hover:bg-gray-100 transition-colors text-sm" title="Underline">U</button>
@@ -1125,6 +1125,10 @@ function App() {
                 Create Note
               </button>
             </div>
+            {/* Spacer that sits under the keyboard — pushes toolbar above it */}
+            {newNoteKeyboardOffset > 0 && (
+              <div className="shrink-0 bg-white" style={{ height: `${newNoteKeyboardOffset}px` }} />
+            )}
 
           </div>
         </div>
