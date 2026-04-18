@@ -165,6 +165,9 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
       window.scrollTo(0, scrollY);
     };
   }, [isEditing]);
+
+  // Auto-save 1.5 s after the user stops typing
+  useEffect(() => {
     if (!isEditing) return;
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     const dirty = title.trim() !== lastSavedRef.current.title || content.trim() !== lastSavedRef.current.content;
@@ -560,86 +563,83 @@ export const Note: React.FC<NoteProps> = ({ note, onSave, onDelete, bibleId, isS
         </div>
       )}
 
-      {/* Share Modal */}
+      {/* Share Modal — bottom sheet on mobile, centred on desktop */}
       {showShareModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold">Share Note</h2>
-              <button
-                onClick={() => setShowShareModal(false)}
-                className="text-gray-500 hover:text-gray-700 p-2 rounded-full hover:bg-gray-100 transition-colors"
-                aria-label="Close"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center sm:p-4">
+          <div className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-xl flex flex-col max-h-[85vh]">
+            {/* Header */}
+            <div className="flex items-start justify-between px-5 py-4 border-b shrink-0">
+              <div className="min-w-0">
+                <h2 className="font-semibold text-gray-900">Share Note</h2>
+                <p className="text-xs text-gray-400 truncate mt-0.5">{note.title}</p>
+              </div>
+              <button onClick={() => setShowShareModal(false)} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors shrink-0 ml-3">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
-            
-            {/* Current Shares */}
-            {isLoadingSharedUsers ? (
-              <div className="text-center py-4">Loading...</div>
-            ) : sharedWithUsers.length > 0 ? (
-              <div className="mb-4">
-                <h3 className="text-sm font-medium text-gray-700 mb-2">Currently shared with:</h3>
-                <div className="space-y-2">
-                  {sharedWithUsers.map(user => (
-                    <div key={user.id} className="flex items-center justify-between bg-gray-50 p-2 rounded">
-                      <span className="text-sm text-gray-600">{user.email}</span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${user.canEdit ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}`}>
-                        {user.canEdit ? 'Collaborator' : 'Viewer'}
-                      </span>
-                      <button
-                        onClick={() => handleRemoveShare(user.id)}
-                        className="text-red-500 hover:text-red-700 ml-2"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
 
-            <div className="mb-4">
-              <label htmlFor="shareEmail" className="block text-sm font-medium text-gray-700 mb-1">
-                Share with (email)
-              </label>
-              <div className="flex gap-2">
+            {/* Scrollable body */}
+            <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">
+              {/* Current shares */}
+              {isLoadingSharedUsers ? (
+                <p className="text-sm text-gray-400 text-center py-2">Loading…</p>
+              ) : sharedWithUsers.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Shared with</p>
+                  <div className="space-y-2">
+                    {sharedWithUsers.map(user => (
+                      <div key={user.id} className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl">
+                        <span className="flex-1 text-sm text-gray-700 truncate">{user.email}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${user.canEdit ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-200 text-gray-600'}`}>
+                          {user.canEdit ? 'Can edit' : 'View only'}
+                        </span>
+                        <button onClick={() => handleRemoveShare(user.id)} className="p-1 text-gray-300 hover:text-red-500 transition-colors shrink-0" title="Remove">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Add person */}
+              <div className="space-y-3">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Add person</p>
                 <input
-                  id="shareEmail"
                   type="email"
                   value={shareEmail}
-                  onChange={(e) => setShareEmail(e.target.value)}
-                  placeholder="Enter email address"
-                  className="flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  onChange={(e) => { setShareEmail(e.target.value); setShareError(null); }}
+                  onKeyDown={(e) => e.key === 'Enter' && handleShareNote()}
+                  placeholder="Email address"
+                  style={{ fontSize: '16px' }}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent"
                 />
-                <div className="mb-4 flex items-center">
+                <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl cursor-pointer select-none">
                   <input
-                    id="allowEditing" 
                     type="checkbox"
                     checked={allowEditing}
                     onChange={(e) => setAllowEditing(e.target.checked)}
-                    className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    className="h-4 w-4 rounded text-indigo-600 border-gray-300 focus:ring-indigo-500"
                   />
-                  <label htmlFor="allowEditing" className="ml-2 block text-sm text-gray-900">
-                    Allow collaborator to edit
-                  </label>
-                </div>
-                <button
-                  onClick={handleShareNote}
-                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
-                >
-                  Share
-                </button>
+                  <div>
+                    <span className="text-sm font-medium text-gray-800">Allow editing</span>
+                    <p className="text-xs text-gray-500">They can modify the note content</p>
+                  </div>
+                </label>
+                {shareError && <p className="text-sm text-red-500">{shareError}</p>}
+                {shareSuccess && <p className="text-sm text-emerald-600 font-medium">✓ Note shared!</p>}
               </div>
-              {shareError && (
-                <p className="mt-1 text-sm text-red-500">{shareError}</p>
-              )}
-              {shareSuccess && (
-                <p className="mt-1 text-sm text-green-500">Note shared successfully!</p>
-              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-3 border-t shrink-0">
+              <button onClick={handleShareNote} className="w-full py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 font-medium text-sm transition-colors">
+                Share Note
+              </button>
             </div>
           </div>
         </div>
